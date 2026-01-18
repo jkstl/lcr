@@ -39,6 +39,7 @@ _observer = Observer(
     _graph_store,
     model=settings.observer_model,
 )
+_observer_tasks: list[asyncio.Task] = []
 
 
 def build_system_prompt(context: str) -> str:
@@ -76,7 +77,7 @@ async def generate_response_node(state: ConversationState) -> ConversationState:
 
 
 async def trigger_observer_node(state: ConversationState) -> ConversationState:
-    asyncio.create_task(
+    task = asyncio.create_task(
         _observer.process_turn(
             user_message=state["user_input"],
             assistant_response=state["assistant_response"],
@@ -84,4 +85,12 @@ async def trigger_observer_node(state: ConversationState) -> ConversationState:
             turn_index=len(state["conversation_history"]),
         )
     )
+    _observer_tasks.append(task)
     return {**state, "observer_triggered": True}
+
+
+async def wait_for_observers() -> None:
+    """Wait for all pending observer tasks to complete."""
+    if _observer_tasks:
+        await asyncio.gather(*_observer_tasks, return_exceptions=True)
+        _observer_tasks.clear()

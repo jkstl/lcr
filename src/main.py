@@ -12,7 +12,7 @@ from rich.text import Text
 from rich import box
 
 from .config import settings
-from .orchestration.graph import create_conversation_graph, ConversationState
+from .orchestration.graph import create_conversation_graph, ConversationState, wait_for_observers
 
 console = Console()
 
@@ -303,13 +303,17 @@ async def run_chat():
         try:
             user_input = console.input("[bold cyan]You:[/bold cyan] ").strip()
         except (KeyboardInterrupt, EOFError):
-            console.print("\n[yellow]Interrupted. Exiting.[/yellow]")
+            console.print("\n[yellow]Interrupted. Saving memories...[/yellow]")
+            await wait_for_observers()
+            console.print("[green]Memories saved. Goodbye![/green]")
             break
 
         if not user_input:
             continue
         if user_input.lower() in {"exit", "quit"}:
-            console.print("[green]Goodbye![/green]")
+            console.print("[yellow]Saving memories...[/yellow]")
+            await wait_for_observers()
+            console.print("[green]Memories saved. Goodbye![/green]")
             break
 
         # Special commands
@@ -365,6 +369,7 @@ def main():
         asyncio.run(run_chat())
     except KeyboardInterrupt:
         console.print("\n[yellow]Interrupted. Goodbye![/yellow]")
+        # Observer tasks already handled by run_chat() if interrupted there
         sys.exit(0)
 
 
