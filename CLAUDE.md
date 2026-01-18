@@ -234,9 +234,9 @@ pytest tests/test_memory_retrieval.py -v
    - May struggle with complex nested relationships
    - **Mitigation**: Could upgrade to qwen3:4b if needed
 
-2. **Temporal Decay**
-   - 30-day half-life may be too aggressive for long-term memories
-   - **Consideration**: Adjust `temporal_decay_days` in config.py
+2. **Memory Decay Tuning**
+   - Default half-lives (180d/60d/14d) are experimental
+   - **Consideration**: Monitor retrieval quality and adjust `temporal_decay_*` settings in `src/config.py`
 
 3. **Reranker Model**
    - Using lightweight all-MiniLM-L6-v2
