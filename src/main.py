@@ -30,9 +30,14 @@ async def check_system_status() -> dict[str, dict]:
                 models = response.json().get("models", [])
                 model_names = [m["name"] for m in models]
 
-                main_model_loaded = any(settings.main_model in m for m in model_names)
-                observer_model_loaded = any(settings.observer_model in m for m in model_names)
-                embedding_model_loaded = any(settings.embedding_model in m for m in model_names)
+                # Check for model name with flexible version matching
+                main_model_base = settings.main_model.split(':')[0]
+                observer_model_base = settings.observer_model.split(':')[0]
+                embedding_model_base = settings.embedding_model.split(':')[0]
+
+                main_model_loaded = any(main_model_base in m for m in model_names)
+                observer_model_loaded = any(observer_model_base in m for m in model_names)
+                embedding_model_loaded = any(embedding_model_base in m for m in model_names)
 
                 status["ollama"] = {
                     "status": "ok",
@@ -93,27 +98,24 @@ async def check_system_status() -> dict[str, dict]:
     # Check Docker (for FalkorDB/Redis)
     try:
         import subprocess
+        # Check for falkordb/redis containers (regardless of compose project)
         result = subprocess.run(
-            ["docker", "compose", "ps", "--format", "json"],
-            cwd=Path(__file__).resolve().parents[1],
+            ["docker", "ps", "--filter", "name=falkordb", "--filter", "name=redis", "--format", "{{.Names}}"],
             capture_output=True,
             text=True,
             timeout=5
         )
         if result.returncode == 0 and result.stdout.strip():
-            import json
-            try:
-                containers = [json.loads(line) for line in result.stdout.strip().split('\n') if line.strip()]
-                running_containers = [c for c in containers if c.get("State") == "running"]
-                status["docker"] = {
-                    "status": "ok",
-                    "running_containers": len(running_containers),
-                    "total_containers": len(containers)
-                }
-            except:
-                status["docker"] = {"status": "ok", "message": "Running"}
+            container_names = [name.strip() for name in result.stdout.strip().split('\n') if name.strip()]
+            running_count = len(container_names)
+            status["docker"] = {
+                "status": "ok",
+                "running_containers": running_count,
+                "total_containers": running_count,
+                "message": f"Found: {', '.join(container_names)}" if running_count <= 2 else f"{running_count} containers"
+            }
         else:
-            status["docker"] = {"status": "warning", "message": "No containers running"}
+            status["docker"] = {"status": "warning", "message": "No FalkorDB/Redis containers found"}
     except FileNotFoundError:
         status["docker"] = {"status": "warning", "message": "Docker not found in PATH"}
     except Exception as e:

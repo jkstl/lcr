@@ -95,8 +95,8 @@ class ContextAssembler:
         relationships = await self.graph_store.search_relationships(entity_names, limit=top_k)
         results: list[RetrievedContext] = []
         for rel in relationships:
-            content = f"{rel['subject']} {rel['predicate']} {rel['object']}"
-            created_at = rel.get("created_at") or datetime.utcnow()
+            content = f"{rel.subject} {rel.predicate} {rel.object}"
+            created_at = rel.created_at
             if isinstance(created_at, str):
                 try:
                     created_at = datetime.fromisoformat(created_at)
