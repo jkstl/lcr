@@ -26,7 +26,7 @@ TURN:
 
 OUTPUT:"""
 
-EXTRACTION_PROMPT = """Extract entities and relationships from the conversation turn.
+EXTRACTION_PROMPT = """Extract entities, relationships, and classify the fact type from the conversation turn.
 
 TURN:
 {text}
@@ -43,9 +43,15 @@ Instructions:
    - Emotional: FEELS_ABOUT, PREFERS, DISLIKES, etc.
 4. When extracting statements from the user, the subject should be "User"
 5. Extract concrete facts only - do not infer or hallucinate
+6. CLASSIFY THE FACT TYPE:
+   - "core": Work schedules, recurring routines, family relationships, home address, 
+             technology/devices owned, persistent life facts
+   - "preference": Opinions, likes/dislikes, feelings, preferences
+   - "episodic": One-time events, plans, meetings, trips
 
 Output valid JSON:
 {{
+    "fact_type": "core|preference|episodic",
     "entities": [
         {{"name": "entity name", "type": "Person|Technology|Place|Organization|Event|Concept", "attributes": {{"key": "value"}}}}
     ],
@@ -54,21 +60,54 @@ Output valid JSON:
     ]
 }}
 
-Example:
-USER: My sister Sarah is 25 and lives in Boston.
-ASSISTANT: That's nice!
+Example 1 (core fact - work schedule):
+USER: I work at TechCorp from 9 to 5 on weekdays.
+ASSISTANT: Got it!
 
 Would extract:
 {{
+    "fact_type": "core",
     "entities": [
-        {{"name": "User", "type": "Person", "attributes": {{}}}},
-        {{"name": "Sarah", "type": "Person", "attributes": {{"age": 25}}}},
-        {{"name": "Boston", "type": "Place", "attributes": {{}}}}
+        {{"name": "User", "type": "Person", "attributes": {{"work_hours": "9-5", "work_days": "weekdays"}}}},
+        {{"name": "TechCorp", "type": "Organization", "attributes": {{}}}}
     ],
     "relationships": [
-        {{"subject": "User", "predicate": "SIBLING_OF", "object": "Sarah", "metadata": {{"relation": "sister"}}}},
-        {{"subject": "Sarah", "predicate": "LIVES_IN", "object": "Boston", "metadata": {{}}}}
+        {{"subject": "User", "predicate": "WORKS_AT", "object": "TechCorp", "metadata": {{"schedule": "9-5 weekdays"}}}}
+    ]
+}}
+
+Example 2 (episodic - one-time event):
+USER: I'm meeting Sarah for coffee tomorrow at 3pm.
+ASSISTANT: Sounds fun!
+
+Would extract:
+{{
+    "fact_type": "episodic",
+    "entities": [
+        {{"name": "User", "type": "Person", "attributes": {{}}}},
+        {{"name": "Sarah", "type": "Person", "attributes": {{}}}}
+    ],
+    "relationships": [
+        {{"subject": "User", "predicate": "MEETING_WITH", "object": "Sarah", "metadata": {{"time": "3pm", "when": "tomorrow"}}}}
+    ]
+}}
+
+Example 3 (preference):
+USER: I prefer Python over JavaScript for backend work.
+ASSISTANT: That's a popular choice!
+
+Would extract:
+{{
+    "fact_type": "preference",
+    "entities": [
+        {{"name": "User", "type": "Person", "attributes": {{}}}},
+        {{"name": "Python", "type": "Technology", "attributes": {{}}}},
+        {{"name": "JavaScript", "type": "Technology", "attributes": {{}}}}
+    ],
+    "relationships": [
+        {{"subject": "User", "predicate": "PREFERS", "object": "Python", "metadata": {{"context": "backend work", "over": "JavaScript"}}}}
     ]
 }}
 
 Now extract from the TURN above:"""
+

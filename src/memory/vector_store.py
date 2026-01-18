@@ -24,6 +24,7 @@ class MemoryChunk(BaseModel):
     access_count: int
     retrieval_queries: list[str]
     utility_score: float
+    fact_type: str = "episodic"  # "core" | "episodic" | "preference"
 
 
 MEMORY_SCHEMA = pa.schema(
@@ -40,6 +41,7 @@ MEMORY_SCHEMA = pa.schema(
         pa.field("access_count", pa.int64()),
         pa.field("retrieval_queries", pa.list_(pa.string())),
         pa.field("utility_score", pa.float64()),
+        pa.field("fact_type", pa.string()),
     ]
 )
 

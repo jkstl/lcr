@@ -1,17 +1,17 @@
 # Local Cognitive RAG (LCR)
 
-A privacy-first conversational AI with persistent episodic memory. Runs entirely offline with zero external API calls.
+**Version 1.0.0**
 
-## Overview
+A local, privacy-first conversational AI system with persistent episodic memory. LCR runs entirely offline—no external API calls, no cloud dependencies—while maintaining rich contextual awareness across sessions through a dual-memory architecture combining semantic vector search with a structured knowledge graph.
 
-LCR remembers what you tell it across sessions—work schedules, relationships, preferences, owned devices—and automatically retrieves relevant context when responding. The system uses a dual-memory architecture combining vector similarity search with a knowledge graph for structured facts.
+## Features
 
-**Key capabilities:**
-- Persistent memory across conversations
-- Automatic entity and relationship extraction
-- Contradiction detection when facts change
-- Temporal decay for memory freshness
-- Cross-encoder reranking for relevance
+- **Persistent Cross-Session Memory** — Remembers conversations, facts, and relationships indefinitely
+- **Intelligent Fact Classification** — Automatically categorizes memories as core facts, episodic events, or preferences
+- **Tiered Memory Decay** — Core facts never fade; transient information naturally ages out
+- **Contradiction Detection** — Tracks when facts change and supersedes outdated information
+- **Entity & Relationship Extraction** — Builds a knowledge graph from natural conversation
+- **Cross-Encoder Reranking** — Retrieves the most semantically relevant context
 
 ## Architecture
 
@@ -136,7 +136,10 @@ Key settings in `src/config.py` (overridable via `.env`):
 |---------|---------|-------------|
 | `max_context_tokens` | 3000 | Max tokens for LLM context |
 | `sliding_window_tokens` | 2000 | Recent conversation history |
-| `temporal_decay_days` | 30 | Memory half-life in days |
+| `temporal_decay_high` | 180 | HIGH utility half-life (days) |
+| `temporal_decay_medium` | 60 | MEDIUM utility half-life (days) |
+| `temporal_decay_low` | 14 | LOW utility half-life (days) |
+| `temporal_decay_core` | 0 | Core facts never decay |
 | `vector_search_top_k` | 15 | Candidates from vector search |
 | `rerank_top_k` | 5 | Final results after reranking |
 

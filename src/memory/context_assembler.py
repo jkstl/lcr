@@ -18,6 +18,8 @@ class RetrievedContext:
     temporal_score: float
     final_score: float
     created_at: datetime
+    fact_type: str = "episodic"  # "core" | "episodic" | "preference"
+    utility_score: float = 0.5
 
 
 class ContextAssembler:
@@ -36,7 +38,13 @@ class ContextAssembler:
         self.embedder = embedder or Embedder()
         self.max_context_tokens = settings.max_context_tokens
         self.sliding_window_tokens = settings.sliding_window_tokens
-        self.temporal_decay_days = settings.temporal_decay_days
+        # Tiered decay rates by utility/fact type
+        self.decay_rates = {
+            "core": settings.temporal_decay_core,      # 0 = no decay
+            "high": settings.temporal_decay_high,      # 180 days
+            "medium": settings.temporal_decay_medium,  # 60 days
+            "low": settings.temporal_decay_low,        # 14 days
+        }
 
     async def assemble(
         self,
@@ -59,7 +67,9 @@ class ContextAssembler:
         all_candidates = self._merge_results(vector_results, graph_results)
 
         for candidate in all_candidates:
-            candidate.temporal_score = self._calculate_temporal_decay(candidate.created_at)
+            candidate.temporal_score = self._calculate_temporal_decay(
+                candidate.created_at, candidate.fact_type, candidate.utility_score
+            )
             candidate.final_score = candidate.relevance_score * candidate.temporal_score
 
         last_user_text = self._extract_last_user_message(conversation_history)
@@ -86,6 +96,8 @@ class ContextAssembler:
                     temporal_score=1.0,
                     final_score=hit.get("utility_score", 0.5),
                     created_at=created_at,
+                    fact_type=hit.get("fact_type", "episodic"),
+                    utility_score=hit.get("utility_score", 0.5),
                 )
             )
         return results
@@ -160,9 +172,30 @@ class ContextAssembler:
 ## Relevant Memories
 {memories}"""
 
-    def _calculate_temporal_decay(self, created_at: datetime) -> float:
+    def _calculate_temporal_decay(self, created_at: datetime, fact_type: str, utility_score: float) -> float:
+        """Calculate temporal decay based on fact_type and utility_score.
+        
+        Core facts have no decay (always return 1.0).
+        Other facts decay based on utility: HIGH=180d, MEDIUM=60d, LOW=14d half-life.
+        """
+        # Core facts never decay
+        if fact_type == "core":
+            return 1.0
+        
+        # Determine decay rate based on utility score
+        if utility_score >= 0.9:  # HIGH utility
+            decay_days = self.decay_rates["high"]
+        elif utility_score >= 0.5:  # MEDIUM utility
+            decay_days = self.decay_rates["medium"]
+        else:  # LOW utility
+            decay_days = self.decay_rates["low"]
+        
+        # If decay_days is 0, no decay
+        if decay_days == 0:
+            return 1.0
+        
         age_days = (datetime.now() - created_at).days
-        return 0.5 ** (age_days / self.temporal_decay_days)
+        return 0.5 ** (age_days / decay_days)
 
     def _get_sliding_window(self, history: list[dict[str, Any]]) -> str:
         result = []

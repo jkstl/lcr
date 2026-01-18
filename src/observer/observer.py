@@ -59,6 +59,7 @@ class Observer:
         structured_data = await self._extract_structured_data(combined_input)
         entities = structured_data.get("entities", [])
         relationships = structured_data.get("relationships", [])
+        fact_type = structured_data.get("fact_type", "episodic")  # Default to episodic
         summary = await self._generate_summary(combined_input)
         queries = await self._generate_retrieval_queries(combined_input)
 
@@ -81,6 +82,7 @@ class Observer:
             conversation_id,
             turn_index,
             utility_grade,
+            fact_type,
         )
 
         await self._persist_to_graph_store(entities, relationships, contradictions)
@@ -148,6 +150,7 @@ class Observer:
         conversation_id: str,
         turn_index: int,
         utility_grade: UtilityGrade,
+        fact_type: str = "episodic",
     ) -> None:
         embedding = await self.embedder.embed(content)
         chunk = MemoryChunk(
@@ -163,6 +166,7 @@ class Observer:
             access_count=0,
             retrieval_queries=queries,
             utility_score=self._utility_to_score(utility_grade),
+            fact_type=fact_type,
         )
         persist_chunks(self.vector_table, [chunk])
 

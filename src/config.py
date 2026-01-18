@@ -22,10 +22,16 @@ class Settings(BaseSettings):
     # Memory
     max_context_tokens: int = 3000
     sliding_window_tokens: int = 2000
-    temporal_decay_days: int = 30
     vector_search_top_k: int = 15
     graph_search_top_k: int = 10
     rerank_top_k: int = 5
+
+    # Temporal decay (half-life in days) by utility grade
+    # Higher utility = longer retention, core facts never decay
+    temporal_decay_high: int = 180    # 6 months for HIGH utility
+    temporal_decay_medium: int = 60   # 2 months for MEDIUM
+    temporal_decay_low: int = 14      # 2 weeks for LOW
+    temporal_decay_core: int = 0      # No decay for core facts (0 = disabled)
 
     # Chunking
     similarity_threshold: float = 0.85

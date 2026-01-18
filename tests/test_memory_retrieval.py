@@ -448,18 +448,22 @@ class TestContextAssembler:
             graph_store=MagicMock(),
             reranker=MagicMock(),
         )
-        assembler.temporal_decay_days = 30
 
         now = datetime.now()
         recent = now - timedelta(days=1)
         old = now - timedelta(days=60)
 
-        recent_score = assembler._calculate_temporal_decay(recent)
-        old_score = assembler._calculate_temporal_decay(old)
+        # Test with episodic fact type and medium utility (0.6 = 60-day half-life)
+        recent_score = assembler._calculate_temporal_decay(recent, "episodic", 0.6)
+        old_score = assembler._calculate_temporal_decay(old, "episodic", 0.6)
 
         assert recent_score > old_score
         assert recent_score > 0.9  # 1 day old should be close to 1.0
-        assert old_score < 0.5  # 60 days old with 30-day half-life should be ~0.25
+        assert old_score < 0.6  # 60 days old with 60-day half-life should be ~0.5
+        
+        # Core facts should never decay
+        core_old = assembler._calculate_temporal_decay(old, "core", 0.6)
+        assert core_old == 1.0  # Core facts always return 1.0
 
     @pytest.mark.asyncio
     async def test_sliding_window_respects_token_limit(self):
@@ -849,8 +853,8 @@ class TestPromptQuality:
 
         prompt = EXTRACTION_PROMPT.format(text="test")
 
-        # Should have example section
-        assert "Example:" in prompt or "example:" in prompt.lower()
+        # Should have example section (now uses "Example 1", "Example 2", etc.)
+        assert "Example 1" in prompt or "Example" in prompt
 
         # Should mention attributes extraction
         assert "attributes" in prompt.lower()
