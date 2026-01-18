@@ -32,9 +32,9 @@ User Input → Context Assembly → LLM Response → Observer (async)
 
 ## Requirements
 
-- Python 3.11+
+- Python 3.10+ (3.11+ recommended)
 - 16GB+ VRAM (10GB for main model, buffer for reranker)
-- Docker Desktop (for FalkorDB/Redis)
+- Docker or Docker Desktop (for FalkorDB/Redis)
 - Ollama
 
 ## Setup
@@ -166,6 +166,62 @@ python -m pytest -v
 
 # Run specific test file
 python -m pytest tests/test_memory_retrieval.py
+```
+
+## Troubleshooting
+
+### Pip Cache Issues
+
+If `pip install -r requirements.txt` fails with metadata errors:
+
+```bash
+# Clear pip cache and reinstall
+pip cache purge
+pip install -r requirements.txt
+
+# If specific package is corrupted:
+pip install --force-reinstall --no-deps <package-name>
+pip install -r requirements.txt
+```
+
+### Port Conflicts
+
+If Docker containers fail with "port already allocated":
+
+```bash
+# Stop and remove all related containers
+docker compose down
+docker rm -f $(docker ps -aq --filter name=lcr-codex) 2>/dev/null
+docker compose up -d
+```
+
+### Linux-Specific Notes
+
+```bash
+# Ensure Docker daemon is running
+sudo systemctl start docker
+
+# Add user to docker group (to avoid sudo)
+sudo usermod -aG docker $USER && newgrp docker
+
+# Activate virtual environment
+source .venv/bin/activate
+```
+
+### Memory Not Persisting
+
+Ensure you wait for "Memories saved. Goodbye!" message when exiting. The observer runs async and needs time to complete.
+
+### Missing Models
+
+```bash
+# The system needs all three models
+ollama pull qwen3:14b
+ollama pull qwen3:1.7b
+ollama pull nomic-embed-text:v1.5
+
+# Verify with
+ollama list
 ```
 
 ## License

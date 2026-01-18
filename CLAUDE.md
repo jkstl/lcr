@@ -149,22 +149,26 @@ pytest tests/test_memory_retrieval.py -v
 
 3. **Contradiction handling**
    - Job change, relationship status change ✅
+   - Interview Friday → Monday (correctly superseded) ✅
 
 4. **Entity extraction**
    - Age attributes, proper relationship types ✅
 
-### 🎯 NEEDS TESTING (Complex Scenarios)
+5. **Multi-Turn Context Dependencies** ✅ (2026-01-18)
+   - Tested: Interview at Microsoft → "when is my interview?" → System recalled correctly
 
-#### 1. Multi-Turn Context Dependencies
-```
-Turn 1: "I'm interviewing at Google next week"
-Turn 2: "Should I wear a suit?"
-Turn 3: "What time is my interview again?"
+6. **Complex Entity Networks** ✅ (2026-01-18)
+   - Tested: "My manager Sarah's husband works at the same company as my brother Tom"
+   - Tested: Sister's graduation at UCLA, job at Google, boyfriend Jake
+   - Result: 14 relationships extracted (SIBLING_OF, WORKS_AT, PARENT_OF, etc.)
 
-Expected: System remembers Google interview from turn 1
-```
+7. **Cross-Session Retrieval** ✅ (2026-01-18)
+   - Tested: After restart, asked "Where does my sister work?"
+   - Result: "Your sister works at Google in Mountain View" (correct)
 
-#### 2. Temporal Reasoning
+### 🎯 REMAINING TESTS (Complex Scenarios)
+
+#### 1. Temporal Reasoning
 ```
 "Last Monday I started my new job at TechCorp"
 [Next day] "How was my first week at work?"
@@ -172,14 +176,7 @@ Expected: System remembers Google interview from turn 1
 Expected: System knows first week isn't over yet
 ```
 
-#### 3. Complex Entity Networks
-```
-"My boss John introduced me to his wife Sarah, who works with my sister"
-
-Expected: Extract 4 entities + 3+ relationships
-```
-
-#### 4. Contradictions with Nuance
+#### 2. Contradictions with Nuance
 ```
 Turn 1: "I love Python for data science"
 Turn 2: "I hate Python for web development"
@@ -187,14 +184,14 @@ Turn 2: "I hate Python for web development"
 Expected: NOT marked as contradiction (context matters)
 ```
 
-#### 5. Nested Relationships
+#### 3. Nested Relationships
 ```
 "My mom's friend's daughter is getting married"
 
 Expected: Track relationship chain properly
 ```
 
-#### 6. Multiple Facts Per Turn
+#### 4. Multiple Facts Per Turn
 ```
 "Yesterday I went to Oregon Diner with my sister Justine who's 24,
 we ordered omelettes, and talked about her new job at Microsoft
@@ -203,7 +200,7 @@ where she's working on Azure with her team in Seattle"
 Expected: Extract all entities and relationships
 ```
 
-#### 7. Ambiguous References
+#### 5. Ambiguous References / Pronoun Resolution
 ```
 Turn 1: "Sarah and I went to dinner"
 Turn 2: "She really enjoyed it"
@@ -211,25 +208,18 @@ Turn 2: "She really enjoyed it"
 Expected: Resolve "she" → Sarah
 ```
 
-#### 8. Contradictory Corrections
+#### 6. Contradictory Corrections
 ```
 "My sister is 24... wait, actually she just turned 25"
 
 Expected: Update attribute correctly, mark old as superseded
 ```
 
-#### 9. Memory Retrieval Under Load
+#### 7. Memory Retrieval Under Load
 ```
 Have 50+ turns, then ask "what was the first thing I told you?"
 
 Expected: Temporal decay shouldn't completely suppress old memories
-```
-
-#### 10. Utility Grading Accuracy
-```
-Test turns that should be DISCARD vs LOW vs MEDIUM vs HIGH
-
-Expected: Appropriate utility scores
 ```
 
 ---
