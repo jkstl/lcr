@@ -271,6 +271,91 @@ def display_system_status(status: dict[str, dict]) -> bool:
     return True
 
 
+async def show_memory_stats():
+    """Display memory and performance statistics."""
+    from pathlib import Path
+    import os
+
+    console.print()
+    console.print(Panel.fit(
+        "[bold cyan]Memory Statistics[/bold cyan]",
+        border_style="cyan"
+    ))
+    console.print()
+
+    stats_table = Table(show_header=True, header_style="bold cyan", box=box.ROUNDED)
+    stats_table.add_column("Metric", style="cyan", width=25)
+    stats_table.add_column("Value", style="green", width=40)
+
+    try:
+        # Vector store stats
+        from .memory.vector_store import init_vector_store
+        vector_table = init_vector_store()
+        memory_count = vector_table.count_rows()
+
+        stats_table.add_row("Vector Memories", str(memory_count))
+
+        # Get latest memories
+        if memory_count > 0:
+            rows = vector_table.to_arrow().to_pylist()
+            avg_utility = sum(r.get("utility_score", 0) for r in rows) / len(rows)
+            stats_table.add_row("Average Utility", f"{avg_utility:.3f}")
+
+            # Utility distribution
+            high = sum(1 for r in rows if r.get("utility_score", 0) >= 0.8)
+            medium = sum(1 for r in rows if 0.4 <= r.get("utility_score", 0) < 0.8)
+            low = sum(1 for r in rows if r.get("utility_score", 0) < 0.4)
+            stats_table.add_row("Utility Distribution", f"High: {high}, Med: {medium}, Low: {low}")
+    except Exception as e:
+        stats_table.add_row("Vector Store", f"[red]Error: {str(e)[:30]}[/red]")
+
+    try:
+        # Graph store stats
+        from .memory.graph_store import create_graph_store
+        graph_store = create_graph_store()
+
+        if hasattr(graph_store, 'entities'):
+            entity_count = len(graph_store.entities)
+            rel_count = len(graph_store.relationships)
+
+            stats_table.add_row("Graph Entities", str(entity_count))
+            stats_table.add_row("Graph Relationships", str(rel_count))
+
+            # Entity types
+            if entity_count > 0:
+                type_counts = {}
+                for entity_data in graph_store.entities.values():
+                    entity_type = entity_data.get('type', 'Unknown')
+                    type_counts[entity_type] = type_counts.get(entity_type, 0) + 1
+
+                type_str = ", ".join(f"{k}: {v}" for k, v in sorted(type_counts.items()))
+                stats_table.add_row("Entity Types", type_str[:40])
+        else:
+            # FalkorDB - can't easily get counts without querying
+            stats_table.add_row("Graph Store", "FalkorDB (use inspect_memory.py for details)")
+    except Exception as e:
+        stats_table.add_row("Graph Store", f"[red]Error: {str(e)[:30]}[/red]")
+
+    try:
+        # Disk usage
+        lancedb_path = Path(settings.lancedb_path)
+        if lancedb_path.exists():
+            total_size = sum(f.stat().st_size for f in lancedb_path.rglob('*') if f.is_file())
+            size_mb = total_size / (1024 * 1024)
+            stats_table.add_row("LanceDB Size", f"{size_mb:.2f} MB")
+    except Exception as e:
+        stats_table.add_row("LanceDB Size", f"[red]Error: {str(e)[:30]}[/red]")
+
+    # Configuration
+    stats_table.add_row("", "")  # Separator
+    stats_table.add_row("Vector Search Top-K", str(settings.vector_search_top_k))
+    stats_table.add_row("Rerank Top-K", str(settings.rerank_top_k))
+    stats_table.add_row("Temporal Decay (days)", str(settings.temporal_decay_days))
+
+    console.print(stats_table)
+    console.print()
+
+
 async def run_chat():
     """Main chat loop with system checks."""
 
@@ -331,6 +416,7 @@ async def run_chat():
             console.print(Panel(
                 "[bold]Available Commands:[/bold]\n\n"
                 "/status - Check system status\n"
+                "/stats  - Show memory statistics\n"
                 "/clear  - Clear screen\n"
                 "/help   - Show this help\n"
                 "exit    - Exit the chat\n"
@@ -338,6 +424,10 @@ async def run_chat():
                 title="Help",
                 border_style="cyan"
             ))
+            continue
+
+        if user_input.lower() == "/stats":
+            await show_memory_stats()
             continue
 
         state: ConversationState = {

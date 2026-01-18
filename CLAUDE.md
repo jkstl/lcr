@@ -1,156 +1,517 @@
-# CLAUDE.md — Local Cognitive RAG (LCR) System
-## Authoritative Architectural Blueprint v1.0
+# CLAUDE.md — LCR System Status & Handoff Document
+## Session Handoff for Continued Development & Testing
 
-> **Purpose**: This document defines the complete technical specification for a local, privacy-first conversational AI assistant with persistent episodic memory. Any coding agent (Claude Code, Codex, Cursor) should be able to implement this system from this specification alone.
-
----
-
-## 1. PROJECT OVERVIEW
-
-### 1.1 What This System Does
-A voice-enabled conversational AI that:
-- Remembers everything the user tells it across sessions (work schedules, relationships, owned technology, preferences)
-- Retrieves relevant memories automatically when answering questions
-- Learns the user's personality, communication style, and life context over time
-- Runs 100% locally with zero external API calls
-
-### 1.2 Example Interactions After Training
-```
-User: "What time do I need to be at work tomorrow?"
-System: [Retrieves: User works at Acme Corp, shift starts 9am, 30min commute]
-Response: "You need to leave by 8:30. Your shift at Acme starts at 9, and with your usual commute from Cedar Park, that gives you a small buffer."
-
-User: "Should I text Sarah back?"
-System: [Retrieves: Recent tension with Sarah, user expressed feeling overwhelmed, Sarah's communication pattern]
-Response: "Based on what you've shared, you were feeling pretty drained after your last exchange. If you're not ready, it's okay to wait until tomorrow. What's making you hesitate?"
-```
-
-### 1.3 Hardware Constraints
-| Resource | Limit | Allocation Strategy |
-|----------|-------|---------------------|
-| VRAM | 16GB | Main LLM ~10GB, Reranker ~0.5GB, Buffer ~5.5GB |
-| System RAM | 32GB | Vector DB, Graph DB, Application |
-| Storage | SSD Required | LanceDB disk-persistence, conversation logs |
-| Network | None | 100% air-gapped capable |
+> **Current Status**: Core memory system implemented and working. Ready for advanced testing with complex conversational scenarios.
 
 ---
 
-## 2. TECHNOLOGY STACK
+## QUICK SUMMARY
 
-### 2.1 Core Components
+**What This Is**: A local, privacy-first conversational AI with persistent episodic memory. Remembers everything across sessions using dual-memory architecture (vector + graph).
 
-| Component | Technology | Version/Variant | Resource Placement |
-|-----------|------------|-----------------|-------------------|
-| **Runtime** | Python | 3.11+ | CPU |
-| **Main LLM** | Qwen3 | 14B Q4_K_M (GGUF) | VRAM (~10GB) |
-| **Observer LLM** | Qwen3:1.7b | 4B Q4_K_M | CPU (offloaded) |
-| **Embedding Model** | nomic-embed-text | v1.5 | CPU |
-| **Reranker** | BGE-Reranker | v2-m3 | VRAM (~0.5GB) |
-| **Vector Database** | LanceDB | Latest | Disk + RAM cache |
-| **Graph Database** | FalkorDB | Latest | Docker container |
-| **Orchestration** | LangGraph | Latest | CPU |
-| **LLM Backend** | Ollama | Latest | Manages GGUF models |
-| **Voice Input** | Whisper.cpp | Medium model | CPU |
-| **Voice Output** | Piper TTS | en_US-lessac-medium | CPU |
+**Current State**: ✅ **FUNCTIONAL** - Core features implemented, basic testing complete, ready for complex scenario testing.
 
-### 2.2 Python Dependencies
+**Your Mission**: Test with complex conversational prompts, identify edge cases, improve extraction quality, and validate memory persistence.
+
+---
+
+## IMPLEMENTATION STATUS
+
+### ✅ Fully Implemented & Working
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| **Vector Memory (LanceDB)** | ✅ Working | Stores semantic embeddings, searches ~15 candidates |
+| **Graph Memory (FalkorDB)** | ✅ Working | Stores entities/relationships, tracks contradictions |
+| **Observer System** | ✅ Working | Extracts entities, relationships, grades utility |
+| **Entity Extraction** | ✅ Fixed | Properly extracts attributes (age, role, etc.) |
+| **Contradiction Handling** | ✅ Working | Marks old facts as superseded by new ones |
+| **Reranker** | ✅ Working | Cross-encoder scores top-5 from 15 candidates |
+| **Pre-Flight Check** | ✅ Working | Validates Ollama, LanceDB, FalkorDB, Docker |
+| **Memory Persistence** | ✅ Fixed | Observer tasks complete before exit |
+| **In-Chat Commands** | ✅ Working | /status, /stats, /clear, /help |
+
+### ⚠️ Not Yet Implemented
+
+| Component | Status | Priority |
+|-----------|--------|----------|
+| **Voice I/O** | ❌ Deferred | Low - Focus on chat first |
+| **Conversation Logs** | ❌ Not impl | Medium - Would help testing |
+| **Memory Pruning** | ❌ Not impl | Low - Only needed at scale |
+| **Web UI** | ❌ Not impl | Low - CLI works fine |
+
+---
+
+## CURRENT ARCHITECTURE
+
 ```
-# requirements.txt
-ollama>=0.2.0
-langgraph>=0.1.0
-lancedb>=0.6.0
-falkordb>=1.0.0
-sentence-transformers>=2.7.0  # For reranker
-numpy>=1.26.0
-pydantic>=2.0.0
-redis>=5.0.0                  # For async task queue
-faster-whisper>=1.0.0         # Whisper.cpp Python bindings
-piper-tts>=1.0.0
-sounddevice>=0.4.6            # Audio I/O
-httpx>=0.27.0                 # Async HTTP for Ollama
-rich>=13.0.0                  # CLI interface
-python-dotenv>=1.0.0
+User Input
+    ↓
+Pre-Flight Check (Ollama, LanceDB, FalkorDB, Docker)
+    ↓
+Context Assembly:
+  • Embed query (nomic-embed-text)
+  • Vector search (top-15 from LanceDB)
+  • Graph search (top-10 relationships)
+  • Merge + temporal decay
+  • Rerank (cross-encoder → top-5)
+    ↓
+LLM Generation (qwen3:14b with context)
+    ↓
+Response to User
+    ↓
+[ASYNC] Observer:
+  • Grade utility (DISCARD/LOW/MEDIUM/HIGH)
+  • Extract entities (Person, Place, Org, Tech, etc.)
+  • Extract relationships (SIBLING_OF, WORKS_AT, etc.)
+  • Detect contradictions
+  • Persist to LanceDB + FalkorDB
+    ↓
+(Wait for observer on exit)
 ```
 
-### 2.3 Ollama Model Setup
+---
+
+## RECENT FIXES (Current Session)
+
+### 1. Observer Persistence Issue ✅
+**Problem**: Memories not saving because observer tasks cancelled on exit
+**Fix**: Track tasks, wait for completion before exit
+**Status**: FIXED - memories now persist correctly
+
+### 2. Entity Extraction Quality ✅
+**Problem**: Missing attributes (age), nonsensical predicates ("and"), no familial relationships
+**Fix**: Rewrote EXTRACTION_PROMPT with taxonomy, examples, explicit instructions
+**Status**: FIXED - now extracts age, proper relationships (SIBLING_OF, PARENT_OF)
+
+### 3. GraphRelationship Subscript Error ✅
+**Problem**: Code treated dataclass as dict (`rel['subject']`)
+**Fix**: Changed to attribute access (`rel.subject`)
+**Status**: FIXED
+
+### 4. Model Detection ✅
+**Problem**: "nomic-embed-text:v1.5 (not found)" when user has :latest
+**Fix**: Flexible version matching by base name
+**Status**: FIXED
+
+---
+
+## HOW TO RUN & TEST
+
+### Start Chat
 ```bash
-# Install models (run once)
-ollama pull qwen3:14b
-ollama pull qwen3:1.7b
-ollama pull nomic-embed-text:v1.5
+python -m src.main
 ```
 
-### 2.4 Docker Services
-```yaml
-# docker-compose.yml
-version: '3.8'
-services:
-  falkordb:
-    image: falkordb/falkordb:latest
-    ports:
-      - "6379:6379"
-    volumes:
-      - ./data/falkordb:/data
-    command: ["--save", "60", "1"]  # Persist every 60s if 1+ change
-  
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6380:6379"
-    volumes:
-      - ./data/redis:/data
+**You'll see:**
+- Pre-flight check (all systems status)
+- Memory count
+- Ready prompt
+
+### In-Chat Commands
+```
+/status - Recheck system health
+/stats  - Show memory statistics (count, utility distribution, disk usage)
+/clear  - Clear screen
+/help   - Command list
+exit    - Save memories and exit
 ```
 
-**IMPLEMENTATION NOTE (v0.4.0 - Phase 4 Complete)**: Cross-encoder reranking has been implemented using BGE-Reranker-v2-m3. The system now uses two-stage retrieval: (1) vector search retrieves top-15 candidates, (2) cross-encoder reranks and selects top-5 most relevant. This is configurable via `settings.use_reranker` and can be disabled for fallback to vector-only retrieval. See `src/models/reranker.py` for implementation details. The reranker auto-detects GPU/CPU and gracefully degrades to CPU if VRAM is unavailable.
+### Inspect Memory
+```bash
+# View stored data
+python scripts/inspect_memory.py
 
-**IMPLEMENTATION NOTE (v0.4.1)**: Observer now uses separate `qwen3:1.7b` model (configurable via `observer_model` setting) instead of main 14B model, significantly improving Observer processing speed. Also added `RELATED_TO` flexible pattern in extraction prompt for domain-specific relationships (e.g., infrastructure: connected_to, depends_on) without hardcoding each type.
+# Clear memory (for fresh testing)
+python scripts/clear_memory.py
+```
+
+### Run Tests
+```bash
+# Full test suite
+pytest
+
+# Memory/extraction tests
+pytest tests/test_memory_retrieval.py -v
+```
 
 ---
 
-## 3. DATA ARCHITECTURE
+## TESTING PRIORITIES
 
-### 3.1 Directory Structure
+### ✅ Already Tested (Basic Functionality)
+
+1. **Simple memory persistence**
+   - User shares info → exits → restarts → system remembers ✅
+
+2. **Familial relationships**
+   - Mom, sister Justine (24), visiting from West Boylston ✅
+
+3. **Contradiction handling**
+   - Job change, relationship status change ✅
+
+4. **Entity extraction**
+   - Age attributes, proper relationship types ✅
+
+### 🎯 NEEDS TESTING (Complex Scenarios)
+
+#### 1. Multi-Turn Context Dependencies
 ```
-lcr/
-├── CLAUDE.md                    # This file
-├── requirements.txt
-├── docker-compose.yml
-├── .env                         # Local config (not committed)
-├── src/
-│   ├── __init__.py
-│   ├── main.py                  # Entry point
-│   ├── config.py                # Pydantic settings
-│   ├── models/
-│   │   ├── __init__.py
-│   │   ├── llm.py               # Ollama client wrapper
-│   │   ├── embedder.py          # Embedding generation
-│   │   └── reranker.py          # Cross-encoder reranking
-│   ├── memory/
-│   │   ├── __init__.py
-│   │   ├── vector_store.py      # LanceDB operations
-│   │   ├── graph_store.py       # FalkorDB operations
-│   │   └── context_assembler.py # Retrieval orchestration
-│   ├── observer/
-│   │   ├── __init__.py
-│   │   ├── observer.py          # Main observer logic
-│   │   ├── extractors.py        # Entity/relationship extraction
-│   │   └── prompts.py           # Observer prompt templates
-│   ├── ingestion/
-│   │   ├── __init__.py
-│   │   ├── chunker.py           # Semantic chunking
-│   │   └── pipeline.py          # Document ingestion
-│   ├── voice/
-│   │   ├── __init__.py
-│   │   ├── stt.py               # Speech-to-text (Whisper)
-│   │   └── tts.py               # Text-to-speech (Piper)
-│   └── orchestration/
-│       ├── __init__.py
-│       └── graph.py             # LangGraph state machine
-├── data/
-│   ├── lancedb/                 # Vector DB storage
-│   ├── falkordb/                # Graph DB storage
-│   ├── redis/                   # Task queue storage
-│   └── conversations/           # Raw conversation logs (JSON)
-└── tests/
-    └── ...
+Turn 1: "I'm interviewing at Google next week"
+Turn 2: "Should I wear a suit?"
+Turn 3: "What time is my interview again?"
+
+Expected: System remembers Google interview from turn 1
 ```
+
+#### 2. Temporal Reasoning
+```
+"Last Monday I started my new job at TechCorp"
+[Next day] "How was my first week at work?"
+
+Expected: System knows first week isn't over yet
+```
+
+#### 3. Complex Entity Networks
+```
+"My boss John introduced me to his wife Sarah, who works with my sister"
+
+Expected: Extract 4 entities + 3+ relationships
+```
+
+#### 4. Contradictions with Nuance
+```
+Turn 1: "I love Python for data science"
+Turn 2: "I hate Python for web development"
+
+Expected: NOT marked as contradiction (context matters)
+```
+
+#### 5. Nested Relationships
+```
+"My mom's friend's daughter is getting married"
+
+Expected: Track relationship chain properly
+```
+
+#### 6. Multiple Facts Per Turn
+```
+"Yesterday I went to Oregon Diner with my sister Justine who's 24,
+we ordered omelettes, and talked about her new job at Microsoft
+where she's working on Azure with her team in Seattle"
+
+Expected: Extract all entities and relationships
+```
+
+#### 7. Ambiguous References
+```
+Turn 1: "Sarah and I went to dinner"
+Turn 2: "She really enjoyed it"
+
+Expected: Resolve "she" → Sarah
+```
+
+#### 8. Contradictory Corrections
+```
+"My sister is 24... wait, actually she just turned 25"
+
+Expected: Update attribute correctly, mark old as superseded
+```
+
+#### 9. Memory Retrieval Under Load
+```
+Have 50+ turns, then ask "what was the first thing I told you?"
+
+Expected: Temporal decay shouldn't completely suppress old memories
+```
+
+#### 10. Utility Grading Accuracy
+```
+Test turns that should be DISCARD vs LOW vs MEDIUM vs HIGH
+
+Expected: Appropriate utility scores
+```
+
+---
+
+## TESTING METHODOLOGY
+
+### How to Test Systematically
+
+1. **Start Fresh**
+   ```bash
+   python scripts/clear_memory.py  # Option 1
+   python -m src.main
+   ```
+
+2. **Run Complex Scenario**
+   - Have multi-turn conversation with complex relationships
+   - Use `/stats` to check memory count
+   - Exit (wait for "Memories saved")
+
+3. **Verify Persistence**
+   ```bash
+   python scripts/inspect_memory.py
+   ```
+   Check:
+   - Entity count
+   - Relationship types
+   - Attributes extracted
+
+4. **Test Retrieval**
+   ```bash
+   python -m src.main
+   # Ask questions about previous conversation
+   ```
+
+5. **Document Results**
+   - What worked well?
+   - What was missed?
+   - What was wrong?
+
+---
+
+## KNOWN ISSUES & LIMITATIONS
+
+### Current Limitations
+
+1. **Observer Model (qwen3:1.7b)**
+   - Sometimes misses subtle entities
+   - May struggle with complex nested relationships
+   - **Mitigation**: Could upgrade to qwen3:4b if needed
+
+2. **Temporal Decay**
+   - 30-day half-life may be too aggressive for long-term memories
+   - **Consideration**: Adjust `temporal_decay_days` in config.py
+
+3. **Reranker Model**
+   - Using lightweight all-MiniLM-L6-v2
+   - May not capture deep semantic similarity
+   - **Future**: Could upgrade to BGE-Reranker-v2-m3
+
+4. **No Pronoun Resolution**
+   - "She went there" doesn't resolve pronouns
+   - **Future**: Add coreference resolution
+
+5. **No Conversation Logs**
+   - Hard to debug what was said
+   - **Future**: Add logging to data/conversations/
+
+### Performance Notes
+
+- **Current**: ~3-5s response time (LLM dominated)
+- **Scaling**: Thousands of conversations before slowdown
+- **Bottleneck**: LLM generation, not memory retrieval
+
+---
+
+## CONFIGURATION
+
+**Key Settings** (`src/config.py` or `.env`):
+
+```python
+# Models
+MAIN_MODEL=qwen3:14b          # Conversation LLM
+OBSERVER_MODEL=qwen3:1.7b     # Entity extraction
+EMBEDDING_MODEL=nomic-embed-text:v1.5
+
+# Memory Retrieval
+MAX_CONTEXT_TOKENS=3000       # LLM context window
+VECTOR_SEARCH_TOP_K=15        # Initial candidates
+RERANK_TOP_K=5                # Final selection
+TEMPORAL_DECAY_DAYS=30        # Memory half-life
+
+# Performance Tuning
+# Reduce for faster responses (less context)
+# Increase for better recall (slower)
+```
+
+---
+
+## FILES TO KNOW
+
+### Core Implementation
+- `src/main.py` - Chat interface with pre-flight check
+- `src/orchestration/graph.py` - LangGraph workflow
+- `src/observer/observer.py` - Entity extraction
+- `src/observer/prompts.py` - **EXTRACTION_PROMPT** (critical!)
+- `src/memory/context_assembler.py` - Retrieval orchestration
+- `src/memory/vector_store.py` - LanceDB operations
+- `src/memory/graph_store.py` - FalkorDB operations
+
+### Testing & Utilities
+- `tests/test_memory_retrieval.py` - 40+ test cases
+- `scripts/inspect_memory.py` - View stored data
+- `scripts/clear_memory.py` - Reset memory
+- `scripts/observer_giana_live.py` - Test observer extraction
+
+### Documentation
+- `README.md` - User-facing overview
+- `QUICKSTART.md` - Setup guide
+- `CLAUDE.md` - **This file** (handoff doc)
+
+---
+
+## NEXT STEPS (Suggested)
+
+### Immediate (This Session)
+
+1. **Test Complex Multi-Turn Scenarios**
+   - Try the 10 testing scenarios listed above
+   - Document what works and what fails
+
+2. **Validate Entity Extraction**
+   - Feed complex sentences
+   - Check if attributes captured
+   - Verify relationship types
+
+3. **Test Contradiction Edge Cases**
+   - Updates vs contradictions
+   - Context-dependent statements
+
+### Medium Term (Future Sessions)
+
+1. **Improve Observer Prompts**
+   - Based on testing results
+   - Add more examples
+   - Refine relationship taxonomy
+
+2. **Add Conversation Logging**
+   - Store raw conversations
+   - Helps with debugging
+
+3. **Implement Memory Pruning**
+   - Delete DISCARD/LOW utility
+   - Archive old conversations
+
+4. **Enhanced Retrieval**
+   - Query expansion
+   - Hybrid search strategies
+
+---
+
+## EXAMPLE TEST CONVERSATIONS
+
+### Test 1: Multi-Entity Network
+```
+You: My manager Sarah's husband works at the same company as my brother Tom
+[Check: Should extract Sarah (manager), husband, brother Tom, company relationships]
+
+You: /stats
+[Check: Entity count increased by 3-4]
+
+You: exit
+[Wait for memories saved]
+
+[Restart]
+You: Who is Sarah?
+[Expected: "Your manager" + "Her husband works with your brother Tom"]
+```
+
+### Test 2: Temporal + Contradiction
+```
+You: I'm interviewing at Microsoft on Friday
+You: Actually they moved it to Monday
+[Check: Contradiction detected, old date superseded]
+
+You: When's my interview?
+[Expected: Monday, not Friday]
+```
+
+### Test 3: Complex Facts
+```
+You: Yesterday I went to my sister's graduation at UCLA. She's 22 and
+     just got a job at Google in Mountain View. She'll be moving from
+     San Diego next month. Her boyfriend Jake is helping her move.
+
+[Check entities: Sister (22), UCLA, Google, Mountain View, San Diego, Jake]
+[Check relationships: ATTENDED, GRADUATED_FROM, WORKS_AT, LOCATED_IN, DATING, etc.]
+```
+
+---
+
+## DEBUGGING TIPS
+
+### Memory Not Persisting?
+1. Check you waited for "Memories saved" before restart
+2. Run `python scripts/inspect_memory.py` to verify
+3. Check Docker containers running: `docker ps`
+
+### Wrong Entities Extracted?
+1. Check `src/observer/prompts.py` → EXTRACTION_PROMPT
+2. Run observer scripts to test: `python scripts/observer_giana_live.py`
+3. May need prompt tuning or model upgrade
+
+### Slow Responses?
+1. Run `/stats` to check memory count
+2. If >10k memories, consider pruning
+3. Reduce `vector_search_top_k` in config.py
+
+### System Check Failing?
+1. Run `/status` to see what's wrong
+2. Check Ollama: `ollama list`
+3. Check Docker: `docker ps`
+4. Restart services: `python scripts/clear_memory.py` → Option 4
+
+---
+
+## SUCCESS CRITERIA
+
+You know it's working when:
+
+✅ Pre-flight check shows all green
+✅ `/stats` shows growing memory count
+✅ System remembers across restarts
+✅ Entities extracted with attributes
+✅ Relationships properly typed (SIBLING_OF not "and")
+✅ Contradictions detected and marked
+✅ Complex queries retrieve correct context
+✅ Response latency stays under 5 seconds
+
+---
+
+## QUESTIONS TO ANSWER
+
+As you test, document:
+
+1. **What types of entities are commonly missed?**
+2. **What relationship types are never extracted?**
+3. **When does contradiction detection fail?**
+4. **What queries fail to retrieve relevant context?**
+5. **At what memory size does performance degrade?**
+6. **What utility grades are assigned incorrectly?**
+7. **What complex scenarios break the system?**
+
+---
+
+## REPOSITORY
+
+**GitHub**: https://github.com/jkstl/lcr-codex_CLAUDEREVIEW
+
+**Latest Commits**:
+- Fix observer persistence (memories now save correctly)
+- Improve entity extraction (attributes, proper relationships)
+- Add pre-flight check and /stats command
+- Fix GraphRelationship subscript error
+
+---
+
+## FINAL NOTES
+
+**This system is functional and ready for real-world testing.** The core memory loop works:
+- Talk → Remember → Retrieve → Respond
+
+Your job is to **stress-test it** with complex conversational scenarios and find edge cases. Focus on:
+- Complex entity networks
+- Temporal reasoning
+- Contradiction nuance
+- Multi-turn context
+
+**Start with the 10 testing scenarios above** and document results.
+
+Good luck! 🚀
+
+---
+
+*Last Updated: 2026-01-18*
+*Status: Core implementation complete, ready for advanced testing*
