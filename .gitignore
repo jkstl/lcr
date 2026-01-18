@@ -1,0 +1,23 @@
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+data/
+*.db
+*.log
+.env
+.DS_Store
+
+# Session documentation (temporary notes)
+CHANGES_SUMMARY.md
+EXTRACTION_FIX.md
+OBSERVER_FIX.md
+VERIFICATION_GUIDE.md
+MAIN_UI_UPDATE.md
+SESSION_COMPLETE.md
+
+# Temporary test files
+test_extraction.py
+test_extraction_improved.py
+test_quick.py
+nul

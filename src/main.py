@@ -1,0 +1,370 @@
+from __future__ import annotations
+
+import asyncio
+import sys
+import uuid
+from pathlib import Path
+
+from rich.console import Console
+from rich.panel import Panel
+from rich.table import Table
+from rich.text import Text
+from rich import box
+
+from .config import settings
+from .orchestration.graph import create_conversation_graph, ConversationState
+
+console = Console()
+
+
+async def check_system_status() -> dict[str, dict]:
+    """Check status of all critical systems."""
+    status = {}
+
+    # Check Ollama
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.get(f"{settings.ollama_host}/api/tags")
+            if response.status_code == 200:
+                models = response.json().get("models", [])
+                model_names = [m["name"] for m in models]
+
+                main_model_loaded = any(settings.main_model in m for m in model_names)
+                observer_model_loaded = any(settings.observer_model in m for m in model_names)
+                embedding_model_loaded = any(settings.embedding_model in m for m in model_names)
+
+                status["ollama"] = {
+                    "status": "ok",
+                    "main_model": settings.main_model if main_model_loaded else f"{settings.main_model} (not found)",
+                    "observer_model": settings.observer_model if observer_model_loaded else f"{settings.observer_model} (not found)",
+                    "embedding_model": settings.embedding_model if embedding_model_loaded else f"{settings.embedding_model} (not found)",
+                    "all_loaded": main_model_loaded and observer_model_loaded and embedding_model_loaded
+                }
+            else:
+                status["ollama"] = {"status": "error", "message": f"HTTP {response.status_code}"}
+    except Exception as e:
+        status["ollama"] = {"status": "error", "message": str(e)}
+
+    # Check LanceDB
+    try:
+        from .memory.vector_store import init_vector_store
+        vector_table = init_vector_store()
+        count = vector_table.count_rows()
+        status["lancedb"] = {
+            "status": "ok",
+            "path": settings.lancedb_path,
+            "memory_chunks": count
+        }
+    except Exception as e:
+        status["lancedb"] = {"status": "error", "message": str(e)}
+
+    # Check FalkorDB
+    try:
+        from falkordb import FalkorDB
+        client = FalkorDB(host=settings.falkordb_host, port=settings.falkordb_port)
+        graph = client.select_graph(settings.falkordb_graph_id)
+        # Simple query to check connectivity
+        result = graph.query("RETURN 1")
+        status["falkordb"] = {
+            "status": "ok",
+            "host": f"{settings.falkordb_host}:{settings.falkordb_port}",
+            "graph_id": settings.falkordb_graph_id
+        }
+    except ImportError:
+        status["falkordb"] = {"status": "warning", "message": "FalkorDB library not installed (will use in-memory)"}
+    except Exception as e:
+        status["falkordb"] = {"status": "warning", "message": f"Not running (will use in-memory): {e}"}
+
+    # Check Redis (optional)
+    try:
+        import redis
+        r = redis.Redis(host=settings.redis_host, port=settings.redis_port, socket_connect_timeout=2)
+        r.ping()
+        status["redis"] = {
+            "status": "ok",
+            "host": f"{settings.redis_host}:{settings.redis_port}"
+        }
+    except ImportError:
+        status["redis"] = {"status": "warning", "message": "Redis library not installed"}
+    except Exception as e:
+        status["redis"] = {"status": "warning", "message": f"Not running: {e}"}
+
+    # Check Docker (for FalkorDB/Redis)
+    try:
+        import subprocess
+        result = subprocess.run(
+            ["docker", "compose", "ps", "--format", "json"],
+            cwd=Path(__file__).resolve().parents[1],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            import json
+            try:
+                containers = [json.loads(line) for line in result.stdout.strip().split('\n') if line.strip()]
+                running_containers = [c for c in containers if c.get("State") == "running"]
+                status["docker"] = {
+                    "status": "ok",
+                    "running_containers": len(running_containers),
+                    "total_containers": len(containers)
+                }
+            except:
+                status["docker"] = {"status": "ok", "message": "Running"}
+        else:
+            status["docker"] = {"status": "warning", "message": "No containers running"}
+    except FileNotFoundError:
+        status["docker"] = {"status": "warning", "message": "Docker not found in PATH"}
+    except Exception as e:
+        status["docker"] = {"status": "warning", "message": str(e)}
+
+    return status
+
+
+def display_system_status(status: dict[str, dict]) -> bool:
+    """Display system status in a nice table. Returns True if all critical systems OK."""
+
+    # Create header
+    console.print()
+    console.print(Panel.fit(
+        "[bold cyan]LCR System Pre-Flight Check[/bold cyan]",
+        border_style="cyan"
+    ))
+    console.print()
+
+    # Create status table
+    table = Table(show_header=True, header_style="bold cyan", box=box.ROUNDED)
+    table.add_column("Component", style="cyan", width=20)
+    table.add_column("Status", width=10)
+    table.add_column("Details", style="dim")
+
+    critical_ok = True
+
+    # Ollama (critical)
+    ollama_status = status.get("ollama", {})
+    if ollama_status.get("status") == "ok":
+        if ollama_status.get("all_loaded"):
+            table.add_row(
+                "Ollama",
+                "[green]✓ OK[/green]",
+                f"Main: {ollama_status['main_model']}\n"
+                f"Observer: {ollama_status['observer_model']}\n"
+                f"Embeddings: {ollama_status['embedding_model']}"
+            )
+        else:
+            table.add_row(
+                "Ollama",
+                "[yellow]⚠ WARN[/yellow]",
+                f"Main: {ollama_status['main_model']}\n"
+                f"Observer: {ollama_status['observer_model']}\n"
+                f"Embeddings: {ollama_status['embedding_model']}\n"
+                "[yellow]Some models not found[/yellow]"
+            )
+            critical_ok = False
+    else:
+        table.add_row(
+            "Ollama",
+            "[red]✗ ERROR[/red]",
+            ollama_status.get("message", "Unknown error")
+        )
+        critical_ok = False
+
+    # LanceDB (critical)
+    lancedb_status = status.get("lancedb", {})
+    if lancedb_status.get("status") == "ok":
+        table.add_row(
+            "LanceDB",
+            "[green]✓ OK[/green]",
+            f"Path: {lancedb_status['path']}\n"
+            f"Memories: {lancedb_status['memory_chunks']}"
+        )
+    else:
+        table.add_row(
+            "LanceDB",
+            "[red]✗ ERROR[/red]",
+            lancedb_status.get("message", "Unknown error")
+        )
+        critical_ok = False
+
+    # FalkorDB (warning only, can use in-memory)
+    falkordb_status = status.get("falkordb", {})
+    if falkordb_status.get("status") == "ok":
+        table.add_row(
+            "FalkorDB",
+            "[green]✓ OK[/green]",
+            f"Host: {falkordb_status['host']}\n"
+            f"Graph: {falkordb_status['graph_id']}"
+        )
+    else:
+        table.add_row(
+            "FalkorDB",
+            "[yellow]⚠ WARN[/yellow]",
+            f"{falkordb_status.get('message', 'Not running')}\n"
+            "[dim]Using in-memory graph store[/dim]"
+        )
+
+    # Redis (optional)
+    redis_status = status.get("redis", {})
+    if redis_status.get("status") == "ok":
+        table.add_row(
+            "Redis",
+            "[green]✓ OK[/green]",
+            f"Host: {redis_status['host']}"
+        )
+    else:
+        table.add_row(
+            "Redis",
+            "[yellow]⚠ WARN[/yellow]",
+            f"{redis_status.get('message', 'Not running')}\n"
+            "[dim]Optional component[/dim]"
+        )
+
+    # Docker
+    docker_status = status.get("docker", {})
+    if docker_status.get("status") == "ok":
+        if "running_containers" in docker_status:
+            table.add_row(
+                "Docker",
+                "[green]✓ OK[/green]",
+                f"Containers: {docker_status['running_containers']}/{docker_status['total_containers']} running"
+            )
+        else:
+            table.add_row(
+                "Docker",
+                "[green]✓ OK[/green]",
+                docker_status.get("message", "Running")
+            )
+    else:
+        table.add_row(
+            "Docker",
+            "[yellow]⚠ WARN[/yellow]",
+            f"{docker_status.get('message', 'Not running')}\n"
+            "[dim]Optional for in-memory mode[/dim]"
+        )
+
+    console.print(table)
+    console.print()
+
+    if not critical_ok:
+        console.print(Panel(
+            "[bold red]⚠ Critical systems not ready[/bold red]\n\n"
+            "Please fix the errors above before starting.\n"
+            "Run [cyan]ollama list[/cyan] to check models\n"
+            "Run [cyan]ollama pull <model>[/cyan] to download missing models",
+            border_style="red",
+            title="System Check Failed"
+        ))
+        return False
+
+    console.print(Panel(
+        "[bold green]✓ All critical systems operational[/bold green]\n\n"
+        "Ready to start conversation.\n"
+        "Type [cyan]exit[/cyan] or [cyan]quit[/cyan] to end the session.",
+        border_style="green",
+        title="Ready"
+    ))
+    console.print()
+
+    return True
+
+
+async def run_chat():
+    """Main chat loop with system checks."""
+
+    # Run system checks
+    console.print("[dim]Checking systems...[/dim]")
+    status = await check_system_status()
+
+    if not display_system_status(status):
+        console.print("\n[yellow]Start anyway? (y/n):[/yellow] ", end="")
+        response = input().strip().lower()
+        if response not in ["y", "yes"]:
+            console.print("[red]Exiting.[/red]")
+            return
+        console.print()
+
+    # Initialize conversation
+    try:
+        graph = create_conversation_graph()
+    except Exception as e:
+        console.print(f"\n[red]✗ Error initializing conversation graph:[/red] {e}")
+        return
+
+    history: list[dict[str, str]] = []
+    conversation_id = str(uuid.uuid4())
+
+    console.print(f"[dim]Conversation ID: {conversation_id}[/dim]\n")
+
+    # Chat loop
+    while True:
+        try:
+            user_input = console.input("[bold cyan]You:[/bold cyan] ").strip()
+        except (KeyboardInterrupt, EOFError):
+            console.print("\n[yellow]Interrupted. Exiting.[/yellow]")
+            break
+
+        if not user_input:
+            continue
+        if user_input.lower() in {"exit", "quit"}:
+            console.print("[green]Goodbye![/green]")
+            break
+
+        # Special commands
+        if user_input.lower() == "/status":
+            status = await check_system_status()
+            display_system_status(status)
+            continue
+
+        if user_input.lower() == "/clear":
+            console.clear()
+            console.print(f"[dim]Conversation ID: {conversation_id}[/dim]\n")
+            continue
+
+        if user_input.lower() == "/help":
+            console.print(Panel(
+                "[bold]Available Commands:[/bold]\n\n"
+                "/status - Check system status\n"
+                "/clear  - Clear screen\n"
+                "/help   - Show this help\n"
+                "exit    - Exit the chat\n"
+                "quit    - Exit the chat",
+                title="Help",
+                border_style="cyan"
+            ))
+            continue
+
+        state: ConversationState = {
+            "user_input": user_input,
+            "conversation_history": history,
+            "conversation_id": conversation_id,
+            "retrieved_context": "",
+            "retrieval_sources": [],
+            "assistant_response": "",
+            "observer_triggered": False,
+            "observer_output": None,
+        }
+
+        try:
+            result = await graph.ainvoke(state)
+            response = result.get("assistant_response", "")
+            console.print(f"[bold green]Assistant:[/bold green] {response}\n")
+
+            history.append({"role": "user", "content": user_input})
+            history.append({"role": "assistant", "content": response})
+
+        except Exception as e:
+            console.print(f"[red]✗ Error:[/red] {e}\n")
+
+
+def main():
+    """Entry point."""
+    try:
+        asyncio.run(run_chat())
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Interrupted. Goodbye![/yellow]")
+        sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()

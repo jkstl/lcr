@@ -1,0 +1,243 @@
+from __future__ import annotations
+
+import asyncio
+import logging
+import uuid
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
+from datetime import datetime
+import json
+from typing import Any, Iterable, List, Optional
+
+from ..config import settings
+
+try:
+    from falkordb import FalkorDB
+except ImportError:  # pragma: no cover
+    FalkorDB = None
+
+LOGGER = logging.getLogger(__name__)
+
+
+def _parse_datetime(value: Any) -> datetime:
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str):
+        try:
+            return datetime.fromisoformat(value)
+        except ValueError:
+            pass
+    return datetime.utcnow()
+
+
+@dataclass
+class GraphRelationship:
+    id: str
+    subject: str
+    predicate: str
+    object: str
+    metadata: dict[str, Any] = field(default_factory=dict)
+    created_at: datetime = field(default_factory=datetime.utcnow)
+
+
+class GraphStore(ABC):
+    """Abstract graph store interface matching the AGENTS schema."""
+
+    @abstractmethod
+    async def persist_entities(self, entities: Iterable[dict[str, Any]]) -> None:
+        ...
+
+    @abstractmethod
+    async def persist_relationships(self, relationships: Iterable[dict[str, Any]]) -> None:
+        ...
+
+    @abstractmethod
+    async def query(self, subject: str, predicate: str | None = None) -> list[GraphRelationship]:
+        ...
+
+    @abstractmethod
+    async def search_relationships(self, entity_names: Iterable[str], limit: int = 10) -> list[GraphRelationship]:
+        ...
+
+    @abstractmethod
+    async def mark_contradiction(self, existing_id: str, superseded_by: str) -> None:
+        ...
+
+
+class InMemoryGraphStore(GraphStore):
+    def __init__(self):
+        self.entities: dict[str, dict[str, Any]] = {}
+        self.relationships: list[GraphRelationship] = []
+
+    async def persist_entities(self, entities: Iterable[dict[str, Any]]) -> None:
+        now = datetime.utcnow()
+        for entity in entities:
+            name = entity["name"]
+            entry = self.entities.get(name, {})
+            entry.setdefault("first_mentioned", now)
+            entry["last_mentioned"] = now
+            entry["type"] = entity.get("type")
+            entry["attributes"] = {**entry.get("attributes", {}), **entity.get("attributes", {})}
+            self.entities[name] = entry
+
+    async def persist_relationships(self, relationships: Iterable[dict[str, Any]]) -> None:
+        for rel in relationships:
+            record = GraphRelationship(
+                id=rel.get("id") or str(uuid.uuid4()),
+                subject=rel["subject"],
+                predicate=rel["predicate"],
+                object=rel["object"],
+                metadata=rel.get("metadata", {}),
+                created_at=datetime.utcnow(),
+            )
+            self.relationships.append(record)
+
+    async def query(self, subject: str, predicate: str | None = None) -> list[GraphRelationship]:
+        matches: list[GraphRelationship] = []
+        for rel in self.relationships:
+            if rel.subject != subject:
+                continue
+            if predicate and rel.predicate != predicate:
+                continue
+            matches.append(rel)
+        return matches
+
+    async def search_relationships(self, entity_names: Iterable[str], limit: int = 10) -> list[GraphRelationship]:
+        found: list[GraphRelationship] = []
+        seen: set[tuple[str, str, str]] = set()
+        names = set(entity_names)
+        for rel in self.relationships:
+            if rel.subject in names or rel.object in names:
+                key = (rel.subject, rel.predicate, rel.object)
+                if key in seen:
+                    continue
+                seen.add(key)
+                found.append(rel)
+            if len(found) >= limit:
+                break
+        return found
+
+    async def mark_contradiction(self, existing_id: str, superseded_by: str) -> None:
+        for rel in self.relationships:
+            if rel.id == existing_id:
+                rel.metadata["still_valid"] = False
+                rel.metadata["superseded_by"] = superseded_by
+                rel.metadata["superseded_at"] = datetime.utcnow()
+                break
+
+
+class FalkorGraphStore(GraphStore):
+    def __init__(self, host: str, port: int, graph_id: str):
+        if FalkorDB is None:
+            raise ImportError("FalkorDB is not available")
+        self.client = FalkorDB(host=host, port=port)
+        self.graph = self.client.select_graph(graph_id)
+
+    async def persist_entities(self, entities: Iterable[dict[str, Any]]) -> None:
+        for entity in entities:
+            current_ts = datetime.utcnow().isoformat()
+            attributes_json = json.dumps(entity.get("attributes", {}))
+            params = {
+                "name": entity["name"],
+                "category": entity.get("type", "Entity"),
+                "attributes": attributes_json,
+                "current_ts": current_ts,
+            }
+            query = """
+MERGE (memo:Entity {name:$name})
+SET memo.category = $category,
+    memo.attributes = $attributes,
+    memo.last_mentioned = $current_ts
+"""
+            await self._run(self.graph.query, query, params=params)
+
+    async def persist_relationships(self, relationships: Iterable[dict[str, Any]]) -> None:
+        for rel in relationships:
+            metadata = rel.get("metadata") or {}
+            current_ts = datetime.utcnow().isoformat()
+            metadata_json = json.dumps(metadata)
+            params = {
+                "subject": rel["subject"],
+                "object": rel["object"],
+                "metadata": metadata_json,
+                "current_ts": current_ts,
+            }
+            query = f"""
+MERGE (subject:Person {{name:$subject}})
+MERGE (object:Entity {{name:$object}})
+MERGE (subject)-[relation:{rel['predicate']}]->(object)
+SET relation.metadata = $metadata,
+    relation.created_at = $current_ts,
+    relation.still_valid = true
+"""
+            await self._run(self.graph.query, query, params=params)
+
+    async def query(self, subject: str, predicate: str | None = None) -> list[GraphRelationship]:
+        pred = f"-[relation:{predicate}]->" if predicate else "-[relation]->"
+        query = f"""
+MATCH (subject {{name:$subject}}){pred}(object)
+RETURN subject.name AS subject, type(relation) AS predicate, object.name AS object,
+       relation.metadata AS metadata, id(relation) AS rel_id, relation.created_at AS created_at
+"""
+        result = await self._run(self.graph.query, query, params={"subject": subject})
+        return [self._row_to_relationship(row) for row in result.result_set]
+
+    async def search_relationships(self, entity_names: Iterable[str], limit: int = 10) -> list[GraphRelationship]:
+        names = list(entity_names)
+        query = """
+MATCH (subject)-[relation]->(object)
+WHERE subject.name IN $names OR object.name IN $names
+RETURN subject.name AS subject, type(relation) AS predicate, object.name AS object,
+       relation.metadata AS metadata, id(relation) AS rel_id, relation.created_at AS created_at
+ORDER BY relation.created_at DESC
+LIMIT $limit
+"""
+        result = await self._run(self.graph.query, query, params={"names": names, "limit": limit})
+        return [self._row_to_relationship(row) for row in result.result_set]
+
+    async def mark_contradiction(self, existing_id: str, superseded_by: str) -> None:
+        current_ts = datetime.utcnow().isoformat()
+        query = """
+MATCH ()-[relation]->()
+WHERE id(relation) = $rel_id
+SET relation.still_valid = false,
+    relation.superseded_by = $superseded_by,
+    relation.superseded_at = $current_ts
+"""
+        params = {"rel_id": existing_id, "superseded_by": superseded_by, "current_ts": current_ts}
+        await self._run(self.graph.query, query, params=params)
+
+    @staticmethod
+    def _row_to_relationship(row: List[Any]) -> GraphRelationship:
+        metadata_raw = row[3]
+        if isinstance(metadata_raw, (str, bytes)) and metadata_raw:
+            try:
+                metadata = json.loads(metadata_raw)
+            except json.JSONDecodeError:
+                metadata = {"value": metadata_raw}
+        else:
+            metadata = metadata_raw or {}
+        created_at = _parse_datetime(row[5])
+        return GraphRelationship(
+            id=str(row[4]),
+            subject=str(row[0]),
+            predicate=str(row[1]),
+            object=str(row[2]),
+            metadata=dict(metadata),
+            created_at=created_at,
+        )
+
+    async def _run(self, func, *args, **kwargs):
+        return await asyncio.to_thread(func, *args, **kwargs)
+
+
+def create_graph_store() -> GraphStore:
+    if FalkorDB is None:
+        LOGGER.info("FalkorDB dependency missing; using in-memory graph store")
+        return InMemoryGraphStore()
+
+    try:
+        return FalkorGraphStore(settings.falkordb_host, settings.falkordb_port, settings.falkordb_graph_id)
+    except Exception as exc:
+        LOGGER.warning("FalkorDB unavailable (%s); falling back to in-memory store", exc)
+        return InMemoryGraphStore()
