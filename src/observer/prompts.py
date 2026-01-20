@@ -4,13 +4,52 @@ TURN:
 {text}
 
 Rules:
-- DISCARD: greetings, thanks, and small talk with no actionable info
-- LOW: general discussion but no new facts
-- MEDIUM: contains preferences or feelings
-- HIGH: contains schedules, relationships, or concrete facts
+- DISCARD: Only trivial greetings ("hi", "thanks", "ok") with absolutely no information
+- LOW: Casual discussion with minimal new information
+- MEDIUM: Contains preferences, feelings, or opinions
+- HIGH: Contains ANY of the following:
+  * Schedules, appointments, or time-based commitments
+  * Relationships between people, organizations, or entities
+  * Concrete facts about the user's life, work, or interests
+  * **User's projects, hobbies, or side work** (even if detailed/technical)
+  * Technical details, architectures, or tools the user works with
+  * User's skills, expertise, or professional background
+  * Significant personal information or life events
+
+Examples:
+
+Example 1 - HIGH (project description):
+USER: I'm working on three projects: 1. LCR (AI system with dual-memory), 
+      2. Tenant Shield (lease analysis), 3. Email Parser Pro (Cloudflare Workers app)
+ASSISTANT: These sound fascinating!
+→ HIGH (detailed information about user's projects and technical work)
+
+Example 2 - HIGH (technical discussion):
+USER: My app uses React Native for the frontend and FastAPI for the backend
+ASSISTANT: That's a solid tech stack!
+→ HIGH (concrete technical facts about user's work)
+
+Example 3 - MEDIUM (preference):
+USER: I prefer Python over JavaScript
+ASSISTANT: That's common for backend work
+→ MEDIUM (opinion/preference)
+
+Example 4 - LOW (vague interest):
+USER: Tell me more about that
+ASSISTANT: Sure, what would you like to know?
+→ LOW (no new information shared)
+
+Example 5 - DISCARD (pure greeting):
+USER: thanks
+ASSISTANT: You're welcome!
+→ DISCARD (no content)
+
+IMPORTANT: When in doubt, err on the side of HIGH rather than DISCARD. 
+It's better to store too much than to lose important information.
 
 Respond with exactly one word: DISCARD, LOW, MEDIUM, or HIGH
 """
+
 
 SUMMARY_PROMPT = """Summarize this conversation turn in a single sentence that highlights what was discussed.
 

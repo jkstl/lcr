@@ -13,6 +13,7 @@ from rich import box
 
 from .config import settings
 from .orchestration.graph import create_conversation_graph, ConversationState, wait_for_observers, generate_response_streaming
+from .conversation_logger import ConversationLogger
 
 console = Console()
 
@@ -380,6 +381,10 @@ async def run_chat():
 
     history: list[dict[str, str]] = []
     conversation_id = str(uuid.uuid4())
+    
+    # Initialize conversation logger
+    logger = ConversationLogger()
+    logger.start_conversation(conversation_id)
 
     console.print(f"[dim]Conversation ID: {conversation_id}[/dim]\n")
 
@@ -389,6 +394,7 @@ async def run_chat():
             user_input = console.input("[bold cyan]You:[/bold cyan] ").strip()
         except (KeyboardInterrupt, EOFError):
             console.print("\n[yellow]Interrupted. Saving memories...[/yellow]")
+            logger.end_conversation()
             await wait_for_observers()
             console.print("[green]Memories saved. Goodbye![/green]")
             break
@@ -397,6 +403,7 @@ async def run_chat():
             continue
         if user_input.lower() in {"exit", "quit"}:
             console.print("[yellow]Saving memories...[/yellow]")
+            logger.end_conversation()
             await wait_for_observers()
             console.print("[green]Memories saved. Goodbye![/green]")
             break
@@ -452,6 +459,9 @@ async def run_chat():
 
             history.append({"role": "user", "content": user_input})
             history.append({"role": "assistant", "content": full_response.strip()})
+            
+            # Log conversation turn
+            logger.log_turn(user_input, full_response.strip())
 
         except Exception as e:
             console.print(f"\n[red]✗ Error:[/red] {e}\n")

@@ -1,6 +1,7 @@
 # Local Cognitive RAG (LCR)
 
-**Version 1.1.2**
+**Version 1.1.3**
+
 
 A local, privacy-first conversational AI system with persistent episodic memory. LCR runs entirely offline—no external API calls, no cloud dependencies—while maintaining rich contextual awareness across sessions through a dual-memory architecture combining semantic vector search with a structured knowledge graph.
 
@@ -196,6 +197,9 @@ python -m src.main
 ```bash
 # Interactive memory management menu
 python scripts/clear_memory.py
+
+# Nuclear reset: Complete memory wipe (stops Docker, deletes all data, restarts fresh)
+python scripts/nuclear_reset.py
 ```
 
 **Available Options:**
@@ -211,6 +215,9 @@ python scripts/clear_memory.py
 ```bash
 # View stored memories, entities, and relationships
 python scripts/inspect_memory.py
+
+# View and export conversation logs
+python scripts/view_conversations.py
 ```
 
 **Displays:**
@@ -536,6 +543,8 @@ docker logs lcr-codex-falkordb-1
 
 ### Recent Improvements
 
+✅ **Enhanced Utility Grading (v1.1.3)** - Fixed bug where detailed project descriptions and technical discussions were incorrectly graded as DISCARD. Updated prompt now explicitly recognizes user's projects, technical details, and work as high-value memories. Added defensive logging to track grading decisions.
+
 ✅ **Semantic Contradiction Detection (v1.1.0)** - Now understands temporal state transitions like "visiting" → "returned home" using LLM-powered analysis
 
 ### Current Limitations
@@ -548,15 +557,11 @@ docker logs lcr-codex-falkordb-1
    - Qwen3 1.7B may miss subtle entities in complex sentences
    - Consider upgrading to qwen3:4b if extraction quality is insufficient
 
-3. **No Conversation Logs**
-   - Raw conversation history not saved to disk
-   - Future: Add conversation logging to `data/conversations/`
-
-4. **Memory Pruning**
+3. **No Memory Pruning**
    - No automatic deletion of DISCARD/LOW utility memories
    - Future: Implement background pruning task
 
-5. **Reranker Model**
+4. **Reranker Model**
    - Using lightweight all-MiniLM-L6-v2 (fast but basic)
    - Future: Consider BGE-Reranker-v2-m3 for deeper semantic understanding
 
@@ -610,6 +615,6 @@ Built with:
 
 ---
 
-*Last Updated: 2026-01-19*
-*Version: 1.1.1*
-*Status: Production-ready with streaming output and improved memory retrieval*
+*Last Updated: 2026-01-20*
+*Version: 1.1.3*
+*Status: Production-ready with enhanced utility grading and conversation logging*

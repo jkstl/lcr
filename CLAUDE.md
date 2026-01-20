@@ -1,7 +1,7 @@
 # CLAUDE.md — LCR System Status & Handoff Document
 ## Session Handoff for Continued Development & Testing
 
-**Version 1.1.2**
+**Version 1.1.3**
 
 > **Current Status**: Production-ready with source-based confidence tracking to prevent hallucinated facts from being stored as ground truth.
 
@@ -11,7 +11,7 @@
 
 **What This Is**: A local, privacy-first conversational AI with persistent episodic memory. Remembers everything across sessions using dual-memory architecture (vector + graph).
 
-**Current State**: ✅ **PRODUCTION READY** - v1.1.2 with source-based confidence tracking and hallucination prevention.
+**Current State**: ✅ **PRODUCTION READY** - v1.1.3 with enhanced utility grading and conversation logging.
 
 **Your Mission**: Continue testing edge cases, monitor contradiction detection accuracy, optimize performance, add features.
 
@@ -36,6 +36,8 @@
 | **Pre-Flight Check** | ✅ Working | Validates Ollama, LanceDB, FalkorDB, Docker |
 | **Memory Persistence** | ✅ Working | Observer tasks complete before exit |
 | **Fact Type Classification** | ✅ Working | Core/episodic/preference with tiered decay |
+| **Conversation Logging** | ✅ NEW | Full history saved to data/conversations/ |
+| **Enhanced Utility Grading** | ✅ NEW | Recognizes technical/project discussions |
 
 ### ⚠️ Known Limitations
 
@@ -43,7 +45,6 @@
 |------------|--------|------------|
 | **Pronoun Resolution** | Can't resolve "she/he/it" | Use explicit names |
 | **Observer Model (1.7B)** | May miss subtle entities | Upgrade to qwen3:4b if needed |
-| **No Conversation Logs** | Hard to debug | Manual testing required |
 
 ---
 
@@ -169,8 +170,10 @@ exit    - Save memories and exit gracefully
 
 ### Inspect Memory
 ```bash
-python scripts/inspect_memory.py    # View stored data
-python scripts/clear_memory.py      # Interactive memory management
+python scripts/inspect_memory.py      # View stored data
+python scripts/clear_memory.py        # Interactive memory management
+python scripts/view_conversations.py  # NEW: View/export conversation logs
+python scripts/nuclear_reset.py       # NEW: Complete memory wipe
 ```
 
 ### Run Tests
@@ -259,9 +262,8 @@ pytest tests/test_semantic_contradictions.py -v    # Contradiction tests
 3. Tune recency boost and state preference weights
 
 ### Short-Term
-1. Add conversation logging (`data/conversations/`)
-2. Implement memory pruning for LOW/DISCARD utility
-3. Upgrade observer to qwen3:4b if extraction quality insufficient
+1. Implement memory pruning for LOW/DISCARD utility
+2. Upgrade observer to qwen3:4b if extraction quality insufficient
 
 ### Long-Term
 1. Add pronoun resolution (coreference)
@@ -325,6 +327,6 @@ Good luck! 🚀
 
 ---
 
-*Last Updated: 2026-01-19*
-*Version: 1.1.1*
-*Status: Production-ready with streaming output and improved memory retrieval*
+*Last Updated: 2026-01-20*
+*Version: 1.1.3*
+*Status: Production-ready with enhanced utility grading and conversation logging*

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
@@ -19,6 +20,9 @@ from .prompts import (
     SUMMARY_PROMPT,
     UTILITY_PROMPT,
 )
+
+LOGGER = logging.getLogger(__name__)
+
 
 
 class UtilityGrade(Enum):
@@ -141,8 +145,13 @@ class Observer:
         response = await self.llm.generate(self.model, prompt)
         cleaned = response.strip().upper()
         try:
-            return UtilityGrade(cleaned.lower())
+            grade = UtilityGrade(cleaned.lower())
+            # Defensive logging to track utility grading decisions
+            preview = text.replace("\n", " ").replace("\r", "")[:100]
+            LOGGER.info(f"Utility grading: {grade.value.upper()} | Preview: {preview}...")
+            return grade
         except ValueError:
+            LOGGER.warning(f"Invalid utility grade response: '{cleaned}', defaulting to LOW")
             return UtilityGrade.LOW
 
     async def _generate_summary(self, text: str) -> str:
