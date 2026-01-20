@@ -100,7 +100,7 @@ class OllamaClient:
             raise
 
     async def _call_embedding(self, payload: dict[str, Any]) -> list[float]:
-        response = await self._client.post("/api/embed", json=payload)
+        response = await self._client.post("/api/embeddings", json=payload)
         response.raise_for_status()
         data = response.json()
         if "embedding" in data:
