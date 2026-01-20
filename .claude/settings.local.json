@@ -11,7 +11,10 @@
       "Bash(git commit:*)",
       "Bash(git push:*)",
       "Bash(docker ps:*)",
-      "Bash(dir:*)"
+      "Bash(dir:*)",
+      "Bash(tree:*)",
+      "Bash(findstr:*)",
+      "Bash(pytest:*)"
     ]
   }
 }

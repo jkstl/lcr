@@ -94,3 +94,45 @@ async def wait_for_observers() -> None:
     if _observer_tasks:
         await asyncio.gather(*_observer_tasks, return_exceptions=True)
         _observer_tasks.clear()
+
+
+async def generate_response_streaming(state: ConversationState):
+    """
+    Async generator that yields response tokens for streaming UI.
+    Updates state and triggers observer after completion.
+    Returns the full response text after yielding all tokens.
+    """
+    # First assemble context (non-streaming)
+    context = await _context_assembler.assemble(
+        query=state["user_input"],
+        conversation_history=state["conversation_history"],
+    )
+    state["retrieved_context"] = context
+    
+    # Build prompt and stream response
+    prompt = build_system_prompt(context)
+    full_response = ""
+    
+    async for token in _llm_client.generate_stream(
+        model=settings.main_model,
+        system=prompt,
+        prompt=state["user_input"],
+    ):
+        full_response += token
+        yield token
+    
+    # Update state with full response
+    state["assistant_response"] = full_response.strip()
+    
+    # Trigger observer in background (non-blocking)
+    task = asyncio.create_task(
+        _observer.process_turn(
+            user_message=state["user_input"],
+            assistant_response=state["assistant_response"],
+            conversation_id=state["conversation_id"],
+            turn_index=len(state["conversation_history"]),
+        )
+    )
+    _observer_tasks.append(task)
+    state["observer_triggered"] = True
+

@@ -38,6 +38,7 @@ Instructions:
    - Familial: SIBLING_OF, PARENT_OF, CHILD_OF, SPOUSE_OF, etc.
    - Social: FRIEND_OF, DATING, MARRIED_TO, BROKE_UP_WITH, etc.
    - Professional: WORKS_AT, MANAGES, COLLEAGUE_OF, etc.
+   - Projects: WORKS_ON, DEVELOPING, MAINTAINING, CREATED (for personal/hobby projects)
    - Spatial: LIVES_IN, VISITING, TRAVELING_TO, TRAVELING_FROM, etc.
    - Ownership: OWNS, HAS, etc.
    - Emotional: FEELS_ABOUT, PREFERS, DISLIKES, etc.

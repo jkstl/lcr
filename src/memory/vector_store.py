@@ -72,14 +72,22 @@ def vector_search(table, embedding: list[float], top_k: int = 10):
     try:
         result = (
             table.search(vector, "embedding")
-            .limit(top_k)
+            .limit(top_k * 2)  # Fetch extra to re-rank with combined score
             .to_list()
         )
     except RuntimeError:
-        result = _naive_vector_search(table, vector, top_k)
+        result = _naive_vector_search(table, vector, top_k * 2)
 
-    result.sort(key=lambda item: item.get("utility_score", 0.0), reverse=True)
-    return result
+    # Combine similarity (from search order) and utility score
+    # Weight: 70% similarity rank, 30% utility
+    for i, item in enumerate(result):
+        # Normalize rank to 0-1 (first result = 1.0, last = lower)
+        rank_score = 1.0 - (i / max(len(result), 1))
+        utility = item.get("utility_score", 0.5)
+        item["_combined_score"] = 0.7 * rank_score + 0.3 * utility
+    
+    result.sort(key=lambda item: item.get("_combined_score", 0.0), reverse=True)
+    return result[:top_k]
 
 
 def _naive_vector_search(table, vector, top_k):

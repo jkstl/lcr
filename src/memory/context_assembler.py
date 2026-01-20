@@ -242,7 +242,19 @@ class ContextAssembler:
         return "\n".join(result)
 
     def _extract_entities_from_query(self, query: str) -> list[str]:
-        return list({match for match in re.findall(r"\b[A-Z][a-zA-Z0-9\-']+\b", query)})
+        # Start with capitalized entity names
+        entities = set(re.findall(r"\b[A-Z][a-zA-Z0-9\-']+\b", query))
+        
+        # For personal queries (my/I/me), always include "User" to find relationships
+        lower_query = query.lower()
+        if any(word in lower_query for word in ["my ", "i ", "me ", "i'm ", "i've "]):
+            entities.add("User")
+        
+        # If query mentions "project(s)", include User to find WORKS_ON relationships
+        if "project" in lower_query:
+            entities.add("User")
+        
+        return list(entities)
 
     def _count_tokens(self, text: str) -> int:
         return max(1, len(text) // 4)

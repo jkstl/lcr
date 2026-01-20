@@ -12,7 +12,7 @@ from rich.text import Text
 from rich import box
 
 from .config import settings
-from .orchestration.graph import create_conversation_graph, ConversationState, wait_for_observers
+from .orchestration.graph import create_conversation_graph, ConversationState, wait_for_observers, generate_response_streaming
 
 console = Console()
 
@@ -442,15 +442,19 @@ async def run_chat():
         }
 
         try:
-            result = await graph.ainvoke(state)
-            response = result.get("assistant_response", "")
-            console.print(f"[bold green]Assistant:[/bold green] {response}\n")
+            # Stream response on same line as Assistant: label
+            console.print("[bold green]Assistant:[/bold green] ", end="")
+            full_response = ""
+            async for token in generate_response_streaming(state):
+                console.print(token, end="")
+                full_response += token
+            console.print("\n")  # Blank line after response
 
             history.append({"role": "user", "content": user_input})
-            history.append({"role": "assistant", "content": response})
+            history.append({"role": "assistant", "content": full_response.strip()})
 
         except Exception as e:
-            console.print(f"[red]✗ Error:[/red] {e}\n")
+            console.print(f"\n[red]✗ Error:[/red] {e}\n")
 
 
 def main():

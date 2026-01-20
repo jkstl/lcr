@@ -1,9 +1,9 @@
 # CLAUDE.md — LCR System Status & Handoff Document
 ## Session Handoff for Continued Development & Testing
 
-**Version 1.1.0**
+**Version 1.1.1**
 
-> **Current Status**: Production-ready with semantic contradiction detection, parallel optimizations, and temporal state tracking.
+> **Current Status**: Production-ready with streaming output, improved memory retrieval for projects, and anti-hallucination guardrails.
 
 ---
 
@@ -11,7 +11,7 @@
 
 **What This Is**: A local, privacy-first conversational AI with persistent episodic memory. Remembers everything across sessions using dual-memory architecture (vector + graph).
 
-**Current State**: ✅ **PRODUCTION READY** - v1.1.0 with semantic contradiction detection, performance optimizations, comprehensive test coverage (43+ tests).
+**Current State**: ✅ **PRODUCTION READY** - v1.1.1 with streaming output, improved project memory retrieval, and anti-hallucination guardrails.
 
 **Your Mission**: Continue testing edge cases, monitor contradiction detection accuracy, optimize performance, add features.
 
@@ -19,22 +19,23 @@
 
 ## IMPLEMENTATION STATUS
 
-### ✅ Fully Implemented & Working (v1.1.0)
+### ✅ Fully Implemented & Working (v1.1.1)
 
 | Component | Status | Notes |
 |-----------|--------|-------|
-| **Vector Memory (LanceDB)** | ✅ Optimized | Parallel search with vector store (~100ms) |
+| **Vector Memory (LanceDB)** | ✅ Optimized | Combined similarity + utility scoring |
 | **Graph Memory (FalkorDB)** | ✅ Optimized | Parallel search, superseded fact filtering |
-| **Semantic Contradiction Detection** | ✅ NEW | LLM-powered, understands temporal transitions |
-| **Temporal State Tracking** | ✅ NEW | Ongoing/completed/planned status tracking |
+| **Streaming Output** | ✅ NEW | Real-time token streaming for TTS readiness |
+| **Project Memory** | ✅ NEW | WORKS_ON predicate + smart entity extraction |
+| **Anti-Hallucination** | ✅ NEW | System prompt prevents fabricating details |
+| **Semantic Contradiction Detection** | ✅ Working | LLM-powered, understands temporal transitions |
+| **Temporal State Tracking** | ✅ Working | Ongoing/completed/planned status tracking |
 | **Observer System** | ✅ Optimized | Parallel LLM tasks, early exit for DISCARD |
 | **Entity Extraction** | ✅ Working | Extracts attributes, proper relationship types |
 | **Reranker** | ✅ Working | Cross-encoder scores top-5 from 15 candidates |
 | **Pre-Flight Check** | ✅ Working | Validates Ollama, LanceDB, FalkorDB, Docker |
 | **Memory Persistence** | ✅ Working | Observer tasks complete before exit |
-| **In-Chat Commands** | ✅ Working | /status, /stats, /clear, /help |
 | **Fact Type Classification** | ✅ Working | Core/episodic/preference with tiered decay |
-| **Tiered Temporal Decay** | ✅ Working | Core=never, HIGH=180d, MED=60d, LOW=14d |
 
 ### ⚠️ Known Limitations
 
@@ -84,7 +85,18 @@ Response to User
 
 ---
 
-## KEY FEATURES (v1.1.0)
+## KEY FEATURES (v1.1.1)
+
+### Streaming Output (NEW)
+- **Real-time token streaming** from Ollama
+- **TTS-ready** architecture for future voice integration
+- **Responsive UI** shows tokens as they generate
+
+### Improved Memory Retrieval (NEW)
+- **WORKS_ON predicate** for reliable project memory
+- **Smart entity extraction** recognizes "my projects" queries
+- **Combined scoring** balances similarity (70%) and utility (30%)
+- **Anti-hallucination guardrails** prevent fabricating details
 
 ### Semantic Contradiction Detection
 - **LLM-powered reasoning** across different predicates
@@ -313,6 +325,6 @@ Good luck! 🚀
 
 ---
 
-*Last Updated: 2026-01-20*
-*Version: 1.1.0*
-*Status: Production-ready with semantic contradiction detection*
+*Last Updated: 2026-01-19*
+*Version: 1.1.1*
+*Status: Production-ready with streaming output and improved memory retrieval*

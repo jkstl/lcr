@@ -52,6 +52,40 @@ class OllamaClient:
                 data = chunk
         return response_text.strip()
 
+    async def generate_stream(
+        self,
+        model: str,
+        prompt: str,
+        system: str | None = None,
+        temperature: float = 0.2,
+        max_tokens: int = 1024,
+    ):
+        """Async generator that yields response tokens as they stream from Ollama."""
+        payload: dict[str, Any] = {
+            "model": model,
+            "prompt": prompt,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "stream": True,
+        }
+        if system:
+            payload["system"] = system
+        
+        async with self._client.stream("POST", "/api/generate", json=payload) as response:
+            response.raise_for_status()
+            async for line in response.aiter_lines():
+                if not line.strip():
+                    continue
+                try:
+                    chunk = json.loads(line)
+                    token = chunk.get("response", "")
+                    if token:
+                        yield token
+                    if chunk.get("done", False):
+                        break
+                except json.JSONDecodeError:
+                    continue
+
     async def embed(self, model: str, text: str) -> list[float]:
         payload = {"model": model, "prompt": text}
         try:
