@@ -38,6 +38,10 @@ class GraphRelationship:
     object: str
     metadata: dict[str, Any] = field(default_factory=dict)
     created_at: datetime = field(default_factory=datetime.utcnow)
+    # Temporal tracking fields
+    status: str | None = None  # "ongoing" | "completed" | "planned" | None
+    valid_until: datetime | None = None  # When this fact expires (for episodic events)
+    superseded_by: str | None = None  # ID of relationship that replaced this
 
 
 class GraphStore(ABC):
@@ -89,6 +93,9 @@ class InMemoryGraphStore(GraphStore):
                 object=rel["object"],
                 metadata=rel.get("metadata", {}),
                 created_at=datetime.utcnow(),
+                status=rel.get("status"),
+                valid_until=rel.get("valid_until"),
+                superseded_by=rel.get("superseded_by"),
             )
             self.relationships.append(record)
 
@@ -121,8 +128,9 @@ class InMemoryGraphStore(GraphStore):
         for rel in self.relationships:
             if rel.id == existing_id:
                 rel.metadata["still_valid"] = False
-                rel.metadata["superseded_by"] = superseded_by
                 rel.metadata["superseded_at"] = datetime.utcnow()
+                rel.superseded_by = superseded_by
+                rel.status = "completed"  # Mark temporal state as completed
                 break
 
 
@@ -156,11 +164,20 @@ SET memo.category = $category,
             metadata = rel.get("metadata") or {}
             current_ts = datetime.utcnow().isoformat()
             metadata_json = json.dumps(metadata)
+
+            # Handle temporal fields
+            status = rel.get("status") or "null"
+            valid_until = rel.get("valid_until").isoformat() if rel.get("valid_until") else "null"
+            superseded_by = rel.get("superseded_by") or "null"
+
             params = {
                 "subject": rel["subject"],
                 "object": rel["object"],
                 "metadata": metadata_json,
                 "current_ts": current_ts,
+                "status": status,
+                "valid_until": valid_until,
+                "superseded_by": superseded_by,
             }
             query = f"""
 MERGE (subject:Person {{name:$subject}})
@@ -168,7 +185,10 @@ MERGE (object:Entity {{name:$object}})
 MERGE (subject)-[relation:{rel['predicate']}]->(object)
 SET relation.metadata = $metadata,
     relation.created_at = $current_ts,
-    relation.still_valid = true
+    relation.still_valid = true,
+    relation.status = $status,
+    relation.valid_until = $valid_until,
+    relation.superseded_by = $superseded_by
 """
             await self._run(self.graph.query, query, params=params)
 
@@ -177,7 +197,8 @@ SET relation.metadata = $metadata,
         query = f"""
 MATCH (subject {{name:$subject}}){pred}(object)
 RETURN subject.name AS subject, type(relation) AS predicate, object.name AS object,
-       relation.metadata AS metadata, id(relation) AS rel_id, relation.created_at AS created_at
+       relation.metadata AS metadata, id(relation) AS rel_id, relation.created_at AS created_at,
+       relation.status AS status, relation.valid_until AS valid_until, relation.superseded_by AS superseded_by
 """
         result = await self._run(self.graph.query, query, params={"subject": subject})
         return [self._row_to_relationship(row) for row in result.result_set]
@@ -188,7 +209,8 @@ RETURN subject.name AS subject, type(relation) AS predicate, object.name AS obje
 MATCH (subject)-[relation]->(object)
 WHERE subject.name IN $names OR object.name IN $names
 RETURN subject.name AS subject, type(relation) AS predicate, object.name AS object,
-       relation.metadata AS metadata, id(relation) AS rel_id, relation.created_at AS created_at
+       relation.metadata AS metadata, id(relation) AS rel_id, relation.created_at AS created_at,
+       relation.status AS status, relation.valid_until AS valid_until, relation.superseded_by AS superseded_by
 ORDER BY relation.created_at DESC
 LIMIT $limit
 """
@@ -218,6 +240,12 @@ SET relation.still_valid = false,
         else:
             metadata = metadata_raw or {}
         created_at = _parse_datetime(row[5])
+
+        # Parse temporal fields (indices 6, 7, 8)
+        status = row[6] if len(row) > 6 and row[6] != "null" else None
+        valid_until = _parse_datetime(row[7]) if len(row) > 7 and row[7] and row[7] != "null" else None
+        superseded_by = row[8] if len(row) > 8 and row[8] and row[8] != "null" else None
+
         return GraphRelationship(
             id=str(row[4]),
             subject=str(row[0]),
@@ -225,6 +253,9 @@ SET relation.still_valid = false,
             object=str(row[2]),
             metadata=dict(metadata),
             created_at=created_at,
+            status=status,
+            valid_until=valid_until,
+            superseded_by=superseded_by,
         )
 
     async def _run(self, func, *args, **kwargs):

@@ -90,7 +90,7 @@ class TestContradictionHandling:
         old_jobs_after = await graph_store.query("User", "WORKS_AT")
         superseded = next(j for j in old_jobs_after if j.id == original_id)
         assert superseded.metadata.get("still_valid") is False
-        assert superseded.metadata.get("superseded_by") == "User WORKS_AT TechStartup"
+        assert superseded.superseded_by == "User WORKS_AT TechStartup"  # Now a direct attribute
 
     @pytest.mark.asyncio
     async def test_relationship_status_change_contradiction(self, graph_store):
@@ -358,6 +358,16 @@ class TestObserverExtraction:
             ]}''',
             "User started new job at NewCorp.",
             '["Where does user work now?", "When did user start new job?"]',
+            # Add semantic contradiction detection response
+            '''{"contradictions": [
+                {
+                    "existing_id": "test-id",
+                    "existing_statement": "User WORKS_AT OldCompany",
+                    "reason": "User changed jobs from OldCompany to NewCorp",
+                    "temporal_type": "state_completion",
+                    "confidence": "high"
+                }
+            ]}''',
         ])
 
         observer = Observer(

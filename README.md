@@ -12,7 +12,8 @@ A local, privacy-first conversational AI system with persistent episodic memory.
 - **Persistent Cross-Session Memory** — Remembers conversations, facts, and relationships indefinitely across restarts
 - **Intelligent Fact Classification** — Automatically categorizes memories as core facts (never decay), episodic events (short-lived), or preferences (medium-lived)
 - **Tiered Memory Decay** — Core facts permanent; HIGH utility fades over 180 days; MEDIUM over 60 days; LOW over 14 days
-- **Contradiction Detection** — Tracks when facts change and automatically supersedes outdated information
+- **Semantic Contradiction Detection** — LLM-powered detection understands temporal state transitions (e.g., "visiting" → "returned home")
+- **Temporal State Tracking** — Tracks ongoing vs completed states, filters expired facts, boosts recent corrections
 - **Entity & Relationship Extraction** — Builds a rich knowledge graph from natural conversation
 - **Cross-Encoder Reranking** — Retrieves the most semantically relevant context using dual-stage search
 
@@ -304,13 +305,23 @@ After responding, the observer:
    - **Extracts** entities (Person, Place, Organization, Technology, etc.)
    - **Extracts** relationships (WORKS_AT, SIBLING_OF, PREFERS, DATING, etc.)
    - **Generates** summary and retrieval queries
-4. **Detects** contradictions (e.g., job change, relationship status update)
-5. **Persists** to both LanceDB (vector) and FalkorDB (graph)
+4. **Semantic contradiction detection** (LLM-powered):
+   - Understands temporal state transitions: "VISITING" → "RETURNED_HOME"
+   - Detects mutually exclusive states: "WORKS_AT CompanyA" vs "WORKS_AT CompanyB"
+   - Recognizes state completions: "SCHEDULED_FOR Friday" → "HAPPENED Monday"
+   - Identifies attribute updates: "AGE 24" → "AGE 25"
+5. **Marks superseded facts** with metadata (still stored but filtered from retrieval)
+6. **Persists** to both LanceDB (vector) and FalkorDB (graph)
 
 **Fact Types:**
 - **Core:** Work schedules, home address, family relationships, owned devices (never decay)
 - **Preference:** Opinions, likes/dislikes, feelings (60-day half-life)
 - **Episodic:** One-time events, meetings, trips (14-day half-life)
+
+**Temporal States:**
+- **Ongoing:** Currently true facts (e.g., "visiting", "working at")
+- **Completed:** Past facts (e.g., "visited", "worked at")
+- **Planned:** Future facts (e.g., "scheduled for", "planning to")
 
 **Performance:** Early exit saves ~4x time on small talk; parallel LLM tasks reduce processing by ~3x for important turns.
 
@@ -523,6 +534,10 @@ docker logs lcr-codex-falkordb-1
 
 ## Known Limitations
 
+### Recent Improvements
+
+✅ **Semantic Contradiction Detection (v1.1.0)** - Now understands temporal state transitions like "visiting" → "returned home" using LLM-powered analysis
+
 ### Current Limitations
 
 1. **Pronoun Resolution**
@@ -531,7 +546,7 @@ docker logs lcr-codex-falkordb-1
 
 2. **Observer Model Accuracy**
    - Qwen3 1.7B may miss subtle entities in complex sentences
-   - Future: Consider upgrading to qwen3:4b for better extraction
+   - Consider upgrading to qwen3:4b if extraction quality is insufficient
 
 3. **No Conversation Logs**
    - Raw conversation history not saved to disk

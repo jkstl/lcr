@@ -111,3 +111,94 @@ Would extract:
 
 Now extract from the TURN above:"""
 
+SEMANTIC_CONTRADICTION_PROMPT = """Analyze if a new relationship contradicts existing facts, considering temporal states and semantic meaning.
+
+NEW RELATIONSHIP:
+{new_relationship}
+
+EXISTING RELATIONSHIPS (about the same entities):
+{existing_relationships}
+
+Instructions:
+1. Consider semantic contradictions, not just exact predicate matches
+2. Understand temporal state transitions:
+   - "VISITING" contradicts "RETURNED_HOME", "LEFT", "DEPARTED"
+   - "SCHEDULED_FOR" contradicts "HAPPENED", "CANCELED", "RESCHEDULED"
+   - "TRAVELING_TO" contradicts "ARRIVED_AT", "CANCELED_TRIP"
+   - "LIVES_IN" contradicts "MOVED_TO", "RELOCATED_TO"
+   - "IS_AT" contradicts "LEFT_FROM"
+   - "WORKS_AT" (ongoing) contradicts "RESIGNED_FROM", "FIRED_FROM"
+3. Understand state completions:
+   - Ongoing states (visiting, working, living) are replaced by completed states (visited, resigned, moved)
+   - Future plans (scheduled, planning) are replaced by outcomes (happened, canceled)
+4. Same entities with mutually exclusive states = contradiction
+5. Updates to attributes (age, location, status) = contradiction if different values
+
+Output valid JSON with reasoning:
+{{
+    "contradictions": [
+        {{
+            "existing_id": "id of contradicted fact",
+            "existing_statement": "subject predicate object",
+            "reason": "explanation of why these contradict",
+            "temporal_type": "state_completion|mutual_exclusion|attribute_update|null",
+            "confidence": "high|medium|low"
+        }}
+    ]
+}}
+
+Examples:
+
+Example 1 - State completion:
+NEW: "Mom RETURNED_HOME Massachusetts"
+EXISTING: [
+    {{"id": "123", "subject": "Mom", "predicate": "VISITING", "object": "Philadelphia"}},
+    {{"id": "124", "subject": "Mom", "predicate": "LIVES_IN", "object": "West Boylston"}}
+]
+
+Output:
+{{
+    "contradictions": [
+        {{
+            "existing_id": "123",
+            "existing_statement": "Mom VISITING Philadelphia",
+            "reason": "RETURNED_HOME indicates the VISITING state has completed - Mom is no longer visiting",
+            "temporal_type": "state_completion",
+            "confidence": "high"
+        }}
+    ]
+}}
+
+Example 2 - No contradiction (sequential states):
+NEW: "Mom ARRIVED_AT Philadelphia"
+EXISTING: [
+    {{"id": "125", "subject": "Mom", "predicate": "TRAVELING_TO", "object": "Philadelphia"}}
+]
+
+Output:
+{{
+    "contradictions": []
+}}
+(TRAVELING_TO → ARRIVED_AT is a natural progression, not a contradiction)
+
+Example 3 - Attribute update:
+NEW: "Sister AGE 25"
+EXISTING: [
+    {{"id": "126", "subject": "Sister", "predicate": "AGE", "object": "24"}}
+]
+
+Output:
+{{
+    "contradictions": [
+        {{
+            "existing_id": "126",
+            "existing_statement": "Sister AGE 24",
+            "reason": "User corrected sister's age from 24 to 25",
+            "temporal_type": "attribute_update",
+            "confidence": "high"
+        }}
+    ]
+}}
+
+Now analyze the relationships above:"""
+

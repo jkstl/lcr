@@ -12,7 +12,13 @@ from ..models.embedder import Embedder
 from ..models.llm import OllamaClient
 from ..memory.vector_store import MemoryChunk, persist_chunks
 from ..memory.graph_store import GraphRelationship, GraphStore
-from .prompts import EXTRACTION_PROMPT, QUERIES_PROMPT, SUMMARY_PROMPT, UTILITY_PROMPT
+from .prompts import (
+    EXTRACTION_PROMPT,
+    QUERIES_PROMPT,
+    SEMANTIC_CONTRADICTION_PROMPT,
+    SUMMARY_PROMPT,
+    UTILITY_PROMPT,
+)
 
 
 class UtilityGrade(Enum):
@@ -135,19 +141,109 @@ class Observer:
             return {"entities": [], "relationships": []}
 
     async def _check_contradictions(self, new_relationships: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """
+        Check for semantic contradictions using LLM reasoning.
+        Handles temporal state transitions and mutually exclusive predicates.
+        """
         contradictions = []
+
         for rel in new_relationships:
-            existing_relationships = await self.graph_store.query(rel["subject"], rel["predicate"])
-            for existing_rel in existing_relationships:
-                if existing_rel.object != rel["object"]:
-                    contradiction = {
-                        "existing_fact_id": existing_rel.id,
-                        "existing_statement": f"{existing_rel.subject} {existing_rel.predicate} {existing_rel.object}",
+            # Get ALL existing relationships involving these entities (not just same predicate)
+            existing_rels = await self._get_related_facts(rel["subject"], rel.get("object"))
+
+            if not existing_rels:
+                continue
+
+            # Use LLM to detect semantic contradictions
+            semantic_contradictions = await self._detect_semantic_contradictions(rel, existing_rels)
+
+            for contradiction in semantic_contradictions:
+                # Only mark high-confidence contradictions
+                if contradiction.get("confidence") == "high":
+                    contradictions.append({
+                        "existing_fact_id": contradiction["existing_id"],
+                        "existing_statement": contradiction["existing_statement"],
                         "new_statement": f"{rel['subject']} {rel['predicate']} {rel['object']}",
+                        "reason": contradiction["reason"],
+                        "temporal_type": contradiction.get("temporal_type"),
                         "resolution_needed": True,
-                    }
-                    contradictions.append(contradiction)
-                    await self.graph_store.mark_contradiction(existing_rel.id, contradiction["new_statement"])
+                    })
+
+                    # Mark the old fact as superseded
+                    await self.graph_store.mark_contradiction(
+                        contradiction["existing_id"],
+                        f"{rel['subject']} {rel['predicate']} {rel['object']}"
+                    )
+
+        return contradictions
+
+    async def _get_related_facts(self, subject: str, obj: str | None = None) -> list[GraphRelationship]:
+        """
+        Get all existing relationships involving the subject (and optionally object).
+        This allows us to find contradictions across different predicates.
+        """
+        # Get all relationships where subject is involved
+        subject_rels = await self.graph_store.query(subject, predicate=None)
+
+        # If object is provided, also get relationships involving the object
+        if obj:
+            object_rels = await self.graph_store.query(obj, predicate=None)
+            # Combine and deduplicate
+            all_rels = {rel.id: rel for rel in subject_rels + object_rels}
+            return list(all_rels.values())
+
+        return subject_rels
+
+    async def _detect_semantic_contradictions(
+        self, new_rel: dict[str, Any], existing_rels: list[GraphRelationship]
+    ) -> list[dict[str, Any]]:
+        """
+        Use LLM to detect semantic contradictions between new and existing relationships.
+        """
+        if not existing_rels:
+            return []
+
+        # Format new relationship
+        new_rel_str = f"{new_rel['subject']} {new_rel['predicate']} {new_rel['object']}"
+
+        # Format existing relationships with IDs
+        existing_rels_str = "[\n"
+        for rel in existing_rels[:10]:  # Limit to prevent context overflow
+            existing_rels_str += f'  {{"id": "{rel.id}", "subject": "{rel.subject}", "predicate": "{rel.predicate}", "object": "{rel.object}"}},\n'
+        existing_rels_str += "]"
+
+        # Ask LLM to detect contradictions
+        prompt = SEMANTIC_CONTRADICTION_PROMPT.format(
+            new_relationship=new_rel_str,
+            existing_relationships=existing_rels_str
+        )
+
+        try:
+            response = await self.llm.generate(self.model, prompt)
+            result = loads(response)
+            return result.get("contradictions", [])
+        except (JSONDecodeError, KeyError) as e:
+            # Fallback to simple contradiction detection if LLM fails
+            return await self._simple_contradiction_check(new_rel, existing_rels)
+
+    async def _simple_contradiction_check(
+        self, new_rel: dict[str, Any], existing_rels: list[GraphRelationship]
+    ) -> list[dict[str, Any]]:
+        """
+        Fallback: Simple predicate-based contradiction detection.
+        """
+        contradictions = []
+        for existing_rel in existing_rels:
+            if (existing_rel.subject == new_rel["subject"] and
+                existing_rel.predicate == new_rel["predicate"] and
+                existing_rel.object != new_rel["object"]):
+                contradictions.append({
+                    "existing_id": existing_rel.id,
+                    "existing_statement": f"{existing_rel.subject} {existing_rel.predicate} {existing_rel.object}",
+                    "reason": "Same predicate with different object",
+                    "temporal_type": None,
+                    "confidence": "high"
+                })
         return contradictions
 
     async def _persist_to_vector_store(

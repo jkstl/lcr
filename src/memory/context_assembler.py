@@ -108,9 +108,18 @@ class ContextAssembler:
 
     async def _graph_search(self, query: str, top_k: int) -> list[RetrievedContext]:
         entity_names = self._extract_entities_from_query(query)
-        relationships = await self.graph_store.search_relationships(entity_names, limit=top_k)
+        relationships = await self.graph_store.search_relationships(entity_names, limit=top_k * 2)  # Fetch extra to account for filtering
+
         results: list[RetrievedContext] = []
         for rel in relationships:
+            # Filter out superseded facts
+            if rel.superseded_by is not None:
+                continue
+
+            # Check if fact has expired (valid_until passed)
+            if rel.valid_until and datetime.now() > rel.valid_until:
+                continue
+
             content = f"{rel.subject} {rel.predicate} {rel.object}"
             created_at = rel.created_at
             if isinstance(created_at, str):
@@ -118,16 +127,36 @@ class ContextAssembler:
                     created_at = datetime.fromisoformat(created_at)
                 except ValueError:
                     created_at = datetime.utcnow()
+
+            # Calculate base relevance score
+            base_relevance = 0.4
+
+            # Boost recent corrections (facts created in last 7 days)
+            days_old = (datetime.now() - created_at).days
+            if days_old < 7:
+                base_relevance *= 1.3  # 30% boost for recent facts
+
+            # Boost ongoing states over completed ones
+            if rel.status == "ongoing" or rel.status is None:
+                base_relevance *= 1.2  # 20% boost for ongoing/active facts
+            elif rel.status == "completed":
+                base_relevance *= 0.8  # Penalize completed states
+
             results.append(
                 RetrievedContext(
                     content=content,
                     source="graph",
-                    relevance_score=0.4,
+                    relevance_score=base_relevance,
                     temporal_score=1.0,
-                    final_score=0.4,
+                    final_score=base_relevance,
                     created_at=created_at,
                 )
             )
+
+            # Limit to top_k after filtering
+            if len(results) >= top_k:
+                break
+
         return results
 
     def _merge_results(
