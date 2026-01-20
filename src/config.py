@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     ollama_host: str = "http://localhost:11434"
     main_model: str = "qwen3:14b"
     observer_model: str = "qwen3:1.7b"
-    embedding_model: str = "nomic-embed-text:v1.5"
+    embedding_model: str = "nomic-embed-text"  # Flexible version matching
 
     # Databases
     lancedb_path: str = "./data/lancedb"
