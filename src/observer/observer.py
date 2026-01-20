@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
@@ -55,14 +56,10 @@ class Observer:
     ) -> ObserverOutput:
         combined_input = f"USER: {user_message}\nASSISTANT: {assistant_response}"
 
+        # Grade utility first (gatekeeper)
         utility_grade = await self._grade_utility(combined_input)
-        structured_data = await self._extract_structured_data(combined_input)
-        entities = structured_data.get("entities", [])
-        relationships = structured_data.get("relationships", [])
-        fact_type = structured_data.get("fact_type", "episodic")  # Default to episodic
-        summary = await self._generate_summary(combined_input)
-        queries = await self._generate_retrieval_queries(combined_input)
 
+        # Early exit for DISCARD - skip all other LLM calls
         if utility_grade == UtilityGrade.DISCARD:
             return ObserverOutput(
                 utility_grade=utility_grade,
@@ -72,6 +69,17 @@ class Observer:
                 contradictions=[],
                 retrieval_queries=[],
             )
+
+        # Parallelize the remaining LLM tasks (no dependencies between them)
+        structured_data, summary, queries = await asyncio.gather(
+            self._extract_structured_data(combined_input),
+            self._generate_summary(combined_input),
+            self._generate_retrieval_queries(combined_input),
+        )
+
+        entities = structured_data.get("entities", [])
+        relationships = structured_data.get("relationships", [])
+        fact_type = structured_data.get("fact_type", "episodic")  # Default to episodic
 
         contradictions = await self._check_contradictions(relationships)
 

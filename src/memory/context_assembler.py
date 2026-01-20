@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import re
 from dataclasses import dataclass
 from datetime import datetime
@@ -61,8 +62,11 @@ class ContextAssembler:
         sliding_context = self._get_sliding_window(conversation_history)
         remaining_tokens = max(0, self.max_context_tokens - self._count_tokens(sliding_context))
 
-        vector_results = await self._vector_search(query, top_k_vector)
-        graph_results = await self._graph_search(query, top_k_graph)
+        # Parallelize independent vector and graph searches
+        vector_results, graph_results = await asyncio.gather(
+            self._vector_search(query, top_k_vector),
+            self._graph_search(query, top_k_graph),
+        )
 
         all_candidates = self._merge_results(vector_results, graph_results)
 
