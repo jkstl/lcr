@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     ollama_host: str = "http://localhost:11434"
     main_model: str = "qwen3:14b"
     observer_model: str = "qwen3:1.7b"
-    embedding_model: str = "nomic-embed-text:v1.5"  # Intentional 404 to use llama3 fallback
+    embedding_model: str = "nomic-embed-text"
 
     # Databases
     lancedb_path: str = "./data/lancedb"

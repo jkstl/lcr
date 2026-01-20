@@ -120,7 +120,8 @@ class ContextAssembler:
             if rel.valid_until and datetime.now() > rel.valid_until:
                 continue
 
-            content = f"{rel.subject} {rel.predicate} {rel.object}"
+            # Format relationship with context-aware language
+            content = self._format_relationship(rel.subject, rel.predicate, rel.object, rel.status)
             created_at = rel.created_at
             if isinstance(created_at, str):
                 try:
@@ -268,3 +269,29 @@ class ContextAssembler:
             if message.get("role") == "user" and isinstance(message.get("content"), str):
                 return message["content"]
         return None
+    
+    def _format_relationship(self, subject: str, predicate: str, obj: str, status: str | None) -> str:
+        """Format relationship with natural language to prevent misinterpretation.
+        
+        Past-tense relationships like BROKE_UP_WITH need explicit clarification
+        to prevent the LLM from inferring current relationships.
+        """
+        # Past-tense relationships that indicate something is NO LONGER true
+        past_relationships = {
+            "BROKE_UP_WITH": f"{subject} broke up with {obj} (no longer together)",
+            "DIVORCED_FROM": f"{subject} divorced {obj} (no longer married)",
+            "QUIT": f"{subject} quit from {obj} (no longer employed there)",
+            "LEFT": f"{subject} left {obj}",
+            "MOVED_FROM": f"{subject} moved from {obj} (no longer lives there)",
+        }
+        
+        # Check if this is a past-tense relationship
+        if predicate in past_relationships:
+            return past_relationships[predicate]
+        
+        # Check if status indicates it's completed
+        if status == "completed":
+            return f"{subject} {predicate} {obj} (completed)"
+        
+        # Default: simple formatting for current/ongoing relationships
+        return f"{subject} {predicate} {obj}"

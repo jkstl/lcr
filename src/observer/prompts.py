@@ -72,7 +72,10 @@ TURN:
 
 Instructions:
 1. Extract ALL people, places, organizations, and objects mentioned
-2. Capture attributes in the "attributes" field (age, role, occupation, etc.)
+2. Capture attributes in the "attributes" field (age, role, occupation, dates, birthdays, etc.)
+   - For dates/birthdays: use "birthday", "birthdate", or "born_on" keys
+   - For ages: use "age" key
+   - For temporal info in relationships: use metadata field
 3. Identify relationships between entities using these types:
    - Identity: HAS_NAME, NICKNAME, GOES_BY (for user's name or preferred name)
    - Familial: SIBLING_OF, PARENT_OF, CHILD_OF, SPOUSE_OF, etc.
@@ -148,6 +151,19 @@ Would extract:
     "relationships": [
         {{"subject": "User", "predicate": "PREFERS", "object": "Python", "metadata": {{"context": "backend work", "over": "JavaScript"}}}}
     ]
+}}
+
+Example 4 (core fact - birthday with date and age):
+USER: Today is my birthday, January 20th. I turned 38 today.
+ASSISTANT: Happy birthday!
+
+Would extract:
+{{
+    "fact_type": "core",
+    "entities": [
+        {{"name": "User", "type": "Person", "attributes": {{"birthday": "January 20", "age": 38}}}}
+    ],
+    "relationships": []
 }}
 
 Now extract from the TURN above:"""
