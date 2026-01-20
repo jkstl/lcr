@@ -42,6 +42,9 @@ class GraphRelationship:
     status: str | None = None  # "ongoing" | "completed" | "planned" | None
     valid_until: datetime | None = None  # When this fact expires (for episodic events)
     superseded_by: str | None = None  # ID of relationship that replaced this
+    # Source tracking fields
+    source: str = "user_stated"  # "user_stated" | "assistant_inferred"
+    confidence: float = 1.0  # 1.0 for user_stated, 0.5 for assistant_inferred
 
 
 class GraphStore(ABC):
@@ -96,6 +99,8 @@ class InMemoryGraphStore(GraphStore):
                 status=rel.get("status"),
                 valid_until=rel.get("valid_until"),
                 superseded_by=rel.get("superseded_by"),
+                source=rel.get("source", "user_stated"),
+                confidence=rel.get("confidence", 1.0),
             )
             self.relationships.append(record)
 
@@ -169,6 +174,10 @@ SET memo.category = $category,
             status = rel.get("status") or "null"
             valid_until = rel.get("valid_until").isoformat() if rel.get("valid_until") else "null"
             superseded_by = rel.get("superseded_by") or "null"
+            
+            # Handle source tracking fields
+            source = rel.get("source", "user_stated")
+            confidence = rel.get("confidence", 1.0)
 
             params = {
                 "subject": rel["subject"],
@@ -178,6 +187,8 @@ SET memo.category = $category,
                 "status": status,
                 "valid_until": valid_until,
                 "superseded_by": superseded_by,
+                "source": source,
+                "confidence": confidence,
             }
             query = f"""
 MERGE (subject:Person {{name:$subject}})
@@ -188,7 +199,9 @@ SET relation.metadata = $metadata,
     relation.still_valid = true,
     relation.status = $status,
     relation.valid_until = $valid_until,
-    relation.superseded_by = $superseded_by
+    relation.superseded_by = $superseded_by,
+    relation.source = $source,
+    relation.confidence = $confidence
 """
             await self._run(self.graph.query, query, params=params)
 

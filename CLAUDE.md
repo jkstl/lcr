@@ -1,9 +1,9 @@
 # CLAUDE.md — LCR System Status & Handoff Document
 ## Session Handoff for Continued Development & Testing
 
-**Version 1.1.1**
+**Version 1.1.2**
 
-> **Current Status**: Production-ready with streaming output, improved memory retrieval for projects, and anti-hallucination guardrails.
+> **Current Status**: Production-ready with source-based confidence tracking to prevent hallucinated facts from being stored as ground truth.
 
 ---
 
@@ -11,7 +11,7 @@
 
 **What This Is**: A local, privacy-first conversational AI with persistent episodic memory. Remembers everything across sessions using dual-memory architecture (vector + graph).
 
-**Current State**: ✅ **PRODUCTION READY** - v1.1.1 with streaming output, improved project memory retrieval, and anti-hallucination guardrails.
+**Current State**: ✅ **PRODUCTION READY** - v1.1.2 with source-based confidence tracking and hallucination prevention.
 
 **Your Mission**: Continue testing edge cases, monitor contradiction detection accuracy, optimize performance, add features.
 
@@ -27,7 +27,7 @@
 | **Graph Memory (FalkorDB)** | ✅ Optimized | Parallel search, superseded fact filtering |
 | **Streaming Output** | ✅ NEW | Real-time token streaming for TTS readiness |
 | **Project Memory** | ✅ NEW | WORKS_ON predicate + smart entity extraction |
-| **Anti-Hallucination** | ✅ NEW | System prompt prevents fabricating details |
+| **Source-Based Extraction** | ✅ NEW | Facts extracted from USER only, not assistant hallucinations |
 | **Semantic Contradiction Detection** | ✅ Working | LLM-powered, understands temporal transitions |
 | **Temporal State Tracking** | ✅ Working | Ongoing/completed/planned status tracking |
 | **Observer System** | ✅ Optimized | Parallel LLM tasks, early exit for DISCARD |

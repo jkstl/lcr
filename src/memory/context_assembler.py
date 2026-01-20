@@ -131,6 +131,10 @@ class ContextAssembler:
             # Calculate base relevance score
             base_relevance = 0.4
 
+            # Apply confidence weighting (user_stated=1.0, assistant_inferred=0.3)
+            confidence = getattr(rel, 'confidence', 1.0)
+            base_relevance *= confidence
+
             # Boost recent corrections (facts created in last 7 days)
             days_old = (datetime.now() - created_at).days
             if days_old < 7:

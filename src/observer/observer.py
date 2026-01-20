@@ -61,6 +61,8 @@ class Observer:
         turn_index: int,
     ) -> ObserverOutput:
         combined_input = f"USER: {user_message}\nASSISTANT: {assistant_response}"
+        user_only = f"USER: {user_message}"
+        assistant_only = f"ASSISTANT: {assistant_response}"
 
         # Grade utility first (gatekeeper)
         utility_grade = await self._grade_utility(combined_input)
@@ -76,16 +78,40 @@ class Observer:
                 retrieval_queries=[],
             )
 
-        # Parallelize the remaining LLM tasks (no dependencies between them)
-        structured_data, summary, queries = await asyncio.gather(
-            self._extract_structured_data(combined_input),
+        # Extract from BOTH user and assistant content separately
+        # Summary and queries use combined for full context
+        user_data, assistant_data, summary, queries = await asyncio.gather(
+            self._extract_structured_data(user_only),
+            self._extract_structured_data(assistant_only),
             self._generate_summary(combined_input),
             self._generate_retrieval_queries(combined_input),
         )
 
-        entities = structured_data.get("entities", [])
-        relationships = structured_data.get("relationships", [])
-        fact_type = structured_data.get("fact_type", "episodic")  # Default to episodic
+        # Merge entities from both sources
+        entities = user_data.get("entities", []) + assistant_data.get("entities", [])
+        
+        # Tag user relationships as high confidence (ground truth)
+        user_relationships = user_data.get("relationships", [])
+        for rel in user_relationships:
+            rel["source"] = "user_stated"
+            rel["confidence"] = 1.0
+        
+        # Tag assistant relationships as low confidence (may be hallucinated)
+        assistant_relationships = assistant_data.get("relationships", [])
+        for rel in assistant_relationships:
+            rel["source"] = "assistant_inferred"
+            rel["confidence"] = 0.3
+        
+        # Merge relationships, but user facts supersede assistant inferences
+        # If same subject+predicate exists from both, only keep user version
+        user_keys = {(r["subject"], r["predicate"]) for r in user_relationships}
+        filtered_assistant = [
+            r for r in assistant_relationships 
+            if (r["subject"], r["predicate"]) not in user_keys
+        ]
+        
+        relationships = user_relationships + filtered_assistant
+        fact_type = user_data.get("fact_type", "episodic")
 
         contradictions = await self._check_contradictions(relationships)
 

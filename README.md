@@ -1,6 +1,6 @@
 # Local Cognitive RAG (LCR)
 
-**Version 1.1.1**
+**Version 1.1.2**
 
 A local, privacy-first conversational AI system with persistent episodic memory. LCR runs entirely offline—no external API calls, no cloud dependencies—while maintaining rich contextual awareness across sessions through a dual-memory architecture combining semantic vector search with a structured knowledge graph.
 

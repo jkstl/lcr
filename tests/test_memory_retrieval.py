@@ -210,7 +210,8 @@ class TestObserverExtraction:
         """Observer should extract WORKS_AT from employment statement."""
         mock_llm_client.generate = AsyncMock(side_effect=[
             "HIGH",  # utility grade
-            '{"entities": [{"name": "User", "type": "Person"}, {"name": "Acme Corp", "type": "Organization"}], "relationships": [{"subject": "User", "predicate": "WORKS_AT", "object": "Acme Corp", "metadata": {}}]}',
+            '{"entities": [{"name": "User", "type": "Person"}, {"name": "Acme Corp", "type": "Organization"}], "relationships": [{"subject": "User", "predicate": "WORKS_AT", "object": "Acme Corp", "metadata": {}}]}',  # user extraction
+            '{"entities": [], "relationships": []}',  # assistant extraction (empty - no new facts)
             "User works at Acme Corp as a developer.",  # summary
             '["Where does user work?", "What company is user employed at?"]',  # queries
         ])
@@ -251,7 +252,8 @@ class TestObserverExtraction:
                 {"subject": "User", "predicate": "SIBLING_OF", "object": "Sarah", "metadata": {}},
                 {"subject": "Sarah", "predicate": "VISITING_FROM", "object": "Philadelphia", "metadata": {}},
                 {"subject": "Mom", "predicate": "VISITING", "object": "User", "metadata": {}}
-            ]}''',
+            ]}''',  # user extraction
+            '{"entities": [], "relationships": []}',  # assistant extraction
             "User's sister Sarah and mom are visiting from Philadelphia.",
             '["Who is visiting user?", "Where does Sarah live?", "Is user\'s family visiting?"]',
         ])
@@ -289,7 +291,8 @@ class TestObserverExtraction:
                 {"name": "Dell Latitude 5520", "type": "Technology", "attributes": {"ram": "32GB", "purpose": "home server"}}
             ], "relationships": [
                 {"subject": "User", "predicate": "OWNS", "object": "Dell Latitude 5520", "metadata": {"use_case": "home server"}}
-            ]}''',
+            ]}''',  # user extraction
+            '{"entities": [], "relationships": []}',  # assistant extraction
             "User repurposed Dell Latitude 5520 as home server.",
             '["What hardware does user have?", "Does user have a home server?"]',
         ])
@@ -355,7 +358,8 @@ class TestObserverExtraction:
                 {"name": "NewCorp", "type": "Organization"}
             ], "relationships": [
                 {"subject": "User", "predicate": "WORKS_AT", "object": "NewCorp", "metadata": {"started": "last week"}}
-            ]}''',
+            ]}''',  # user extraction
+            '{"entities": [], "relationships": []}',  # assistant extraction
             "User started new job at NewCorp.",
             '["Where does user work now?", "When did user start new job?"]',
             # Add semantic contradiction detection response
@@ -828,10 +832,11 @@ class TestUtilityGrading:
         ]
 
         mock_llm_client.generate = AsyncMock(side_effect=[
-            "HIGH",
-            '{"entities": [], "relationships": []}',
-            "Summary",
-            "[]",
+            "HIGH",  # utility
+            '{"entities": [], "relationships": []}',  # user extraction
+            '{"entities": [], "relationships": []}',  # assistant extraction
+            "Summary",  # summary
+            "[]",  # queries
         ] * len(high_utility_messages))
 
         observer = Observer(
