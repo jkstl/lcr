@@ -9,7 +9,7 @@ import pyarrow as pa
 from pydantic import BaseModel
 
 
-EMBED_DIM = 4096
+EMBED_DIM = 768  # nomic-embed-text dimension (was 4096 for llama3 fallback)
 
 class MemoryChunk(BaseModel):
     id: str
