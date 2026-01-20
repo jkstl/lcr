@@ -226,6 +226,8 @@ python scripts/view_conversations.py
 - Relationship list with predicates
 - Utility score distribution
 
+**Note on Conversation Logs:** The JSON conversation logs saved to `data/conversations/` are structured in a format that can be easily converted to fine-tuning datasets (Alpaca, ShareGPT, JSONL, etc.). This allows you to train custom models on your own conversation history while maintaining complete privacy.
+
 ---
 
 ## Configuration

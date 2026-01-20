@@ -1,332 +1,186 @@
-# CLAUDE.md — LCR System Status & Handoff Document
-## Session Handoff for Continued Development & Testing
+# CLAUDE.md — Developer Handoff Document
 
-**Version 1.1.3**
+**Version 1.1.3** | **Status: Production-Ready**
 
-> **Current Status**: Production-ready with source-based confidence tracking to prevent hallucinated facts from being stored as ground truth.
-
----
-
-## QUICK SUMMARY
-
-**What This Is**: A local, privacy-first conversational AI with persistent episodic memory. Remembers everything across sessions using dual-memory architecture (vector + graph).
-
-**Current State**: ✅ **PRODUCTION READY** - v1.1.3 with enhanced utility grading and conversation logging.
-
-**Your Mission**: Continue testing edge cases, monitor contradiction detection accuracy, optimize performance, add features.
+This document provides essential context for developers continuing work on the LCR system. For user-facing documentation, see [README.md](README.md).
 
 ---
 
-## IMPLEMENTATION STATUS
+## Quick Context
 
-### ✅ Fully Implemented & Working (v1.1.1)
+**What is LCR?** Local Cognitive RAG - A privacy-first conversational AI with persistent episodic memory using dual-architecture (vector + graph).
 
-| Component | Status | Notes |
-|-----------|--------|-------|
-| **Vector Memory (LanceDB)** | ✅ Optimized | Combined similarity + utility scoring |
-| **Graph Memory (FalkorDB)** | ✅ Optimized | Parallel search, superseded fact filtering |
-| **Streaming Output** | ✅ NEW | Real-time token streaming for TTS readiness |
-| **Project Memory** | ✅ NEW | WORKS_ON predicate + smart entity extraction |
-| **Source-Based Extraction** | ✅ NEW | Facts extracted from USER only, not assistant hallucinations |
-| **Semantic Contradiction Detection** | ✅ Working | LLM-powered, understands temporal transitions |
-| **Temporal State Tracking** | ✅ Working | Ongoing/completed/planned status tracking |
-| **Observer System** | ✅ Optimized | Parallel LLM tasks, early exit for DISCARD |
-| **Entity Extraction** | ✅ Working | Extracts attributes, proper relationship types |
-| **Reranker** | ✅ Working | Cross-encoder scores top-5 from 15 candidates |
-| **Pre-Flight Check** | ✅ Working | Validates Ollama, LanceDB, FalkorDB, Docker |
-| **Memory Persistence** | ✅ Working | Observer tasks complete before exit |
-| **Fact Type Classification** | ✅ Working | Core/episodic/preference with tiered decay |
-| **Conversation Logging** | ✅ NEW | Full history saved to data/conversations/ |
-| **Enhanced Utility Grading** | ✅ NEW | Recognizes technical/project discussions |
+**Current Focus:** System is production-ready. Priority areas are performance optimization, memory pruning, and edge case testing.
 
-### ⚠️ Known Limitations
-
-| Limitation | Impact | Mitigation |
-|------------|--------|------------|
-| **Pronoun Resolution** | Can't resolve "she/he/it" | Use explicit names |
-| **Observer Model (1.7B)** | May miss subtle entities | Upgrade to qwen3:4b if needed |
+**Recent Major Changes (v1.1.3):**
+- Enhanced utility grading to prevent project descriptions from being discarded
+- Implemented conversation logging to `data/conversations/`
+- Added defensive logging for utility grading decisions
 
 ---
 
-## ARCHITECTURE
+## Architecture Overview
 
 ```
-User Input
-    ↓
-Pre-Flight Check (Ollama, LanceDB, FalkorDB, Docker)
-    ↓
-Context Assembly (PARALLEL):
-  • Embed query (nomic-embed-text)
-  • Vector search (top-15 from LanceDB)  ┐
-  • Graph search (top-10 relationships)  ┴─ Run concurrently (~100ms)
-  • Filter superseded/expired facts
-  • Apply temporal decay + recency boost
-  • Rerank (cross-encoder → top-5)
-    ↓
-LLM Generation (qwen3:14b with context) ~2-3s
-    ↓
-Response to User
-    ↓
-[ASYNC] Observer (PARALLEL):
-  1. Grade utility (DISCARD/LOW/MEDIUM/HIGH) - Gatekeeper
-  2. IF DISCARD → Early exit (save ~4x time)
-  3. ELSE parallel processing:
-     • Extract entities + relationships    ┐
-     • Generate summary                    ├─ Run concurrently
-     • Generate retrieval queries          ┘
-  4. Semantic contradiction detection (LLM):
-     • VISITING → RETURNED_HOME (state completion)
-     • WORKS_AT A → WORKS_AT B (mutual exclusion)
-     • AGE 24 → AGE 25 (attribute update)
-  5. Mark superseded facts (status="completed")
-  6. Persist to LanceDB + FalkorDB
-    ↓
-(Wait for observer on exit)
+User Input → Pre-Flight Check → Context Assembly (Parallel) → LLM Generation → Response
+                                     ↓ Async Observer (Parallel Processing)
+                                     ↓ Persist to Vector + Graph Stores
 ```
+
+**Memory Pipeline:**
+1. **Utility grading** (DISCARD = early exit)
+2. **Parallel extraction** (entities, relationships, summary, queries, fact_type)
+3. **Semantic contradiction detection** (LLM-powered)
+4. **Mark superseded facts** (status="completed")
+5. **Persist** to LanceDB (vector) + FalkorDB (graph)
+
+**Key Optimizations:**
+- Parallel database queries (vector + graph)
+- Early exit for DISCARD turns (~4x faster)
+- Parallel observer LLM tasks (~3x faster)
+- Temporal decay with tiered half-life (core/HIGH/MEDIUM/LOW)
 
 ---
 
-## KEY FEATURES (v1.1.1)
+## Critical Files for Development
 
-### Streaming Output (NEW)
-- **Real-time token streaming** from Ollama
-- **TTS-ready** architecture for future voice integration
-- **Responsive UI** shows tokens as they generate
+### Core Logic
+- `src/observer/observer.py` - Entity extraction, contradiction detection, persistence
+- `src/observer/prompts.py` - **UTILITY_PROMPT**, EXTRACTION_PROMPT, SEMANTIC_CONTRADICTION_PROMPT
+- `src/memory/context_assembler.py` - Retrieval, filtering, temporal decay, recency boost
+- `src/memory/graph_store.py` - FalkorDB operations, superseded fact tracking
+- `src/orchestration/graph.py` - LangGraph state machine, streaming generation
 
-### Improved Memory Retrieval (NEW)
-- **WORKS_ON predicate** for reliable project memory
-- **Smart entity extraction** recognizes "my projects" queries
-- **Combined scoring** balances similarity (70%) and utility (30%)
-- **Anti-hallucination guardrails** prevent fabricating details
-
-### Semantic Contradiction Detection
-- **LLM-powered reasoning** across different predicates
-- **Temporal state transitions**: VISITING → RETURNED_HOME
-- **Mutually exclusive states**: WORKS_AT CompanyA vs CompanyB
-- **Attribute updates**: AGE 24 → AGE 25
-- **Fallback detection**: Simple predicate matching if LLM fails
-
-### Temporal State Tracking
-- **Status field**: "ongoing" | "completed" | "planned"
-- **Valid until**: Expiration timestamps for episodic events
-- **Superseded by**: Links to facts that replaced old ones
-- **Filtering**: Automatically hides superseded/expired facts
-
-### Performance Optimizations
-- **Parallel database queries**: Vector + graph search concurrent (~33% faster)
-- **Early exit**: DISCARD turns skip 3 LLM calls (~4x faster)
-- **Parallel observer**: 3 LLM tasks concurrent (~3x faster)
-- **Recency boost**: Recent corrections get 30% relevance boost
-- **State preference**: Ongoing facts boosted 20% over completed
-
----
-
-## CONFIGURATION
-
-**Key Settings** (`src/config.py` or `.env`):
-
-```python
-# Models
-MAIN_MODEL=qwen3:14b              # Conversation LLM
-OBSERVER_MODEL=qwen3:1.7b         # Entity extraction (upgrade to :4b if needed)
-EMBEDDING_MODEL=nomic-embed-text  # Flexible version matching
-
-# Memory Retrieval
-MAX_CONTEXT_TOKENS=3000           # LLM context window
-SLIDING_WINDOW_TOKENS=2000        # Recent conversation retention
-VECTOR_SEARCH_TOP_K=15            # Initial candidates
-GRAPH_SEARCH_TOP_K=10             # Graph relationships
-RERANK_TOP_K=5                    # Final selection after reranking
-
-# Temporal Decay (tiered by utility)
-TEMPORAL_DECAY_CORE=0             # Core facts never decay
-TEMPORAL_DECAY_HIGH=180           # HIGH utility: 6 months
-TEMPORAL_DECAY_MEDIUM=60          # MEDIUM utility: 2 months
-TEMPORAL_DECAY_LOW=14             # LOW utility: 2 weeks
-```
-
-**Performance Tuning:**
-- Reduce `VECTOR_SEARCH_TOP_K` for faster responses (less context)
-- Increase for better recall (slower responses)
-- Adjust decay rates based on use case
-
----
-
-## HOW TO RUN & TEST
-
-### Start Chat
-```bash
-python -m src.main
-```
-
-### In-Chat Commands
-```
-/status - System health check (models, databases, Docker)
-/stats  - Memory statistics (count, utility distribution, types)
-/clear  - Clear screen (history preserved)
-/help   - Command list
-exit    - Save memories and exit gracefully
-```
-
-### Inspect Memory
-```bash
-python scripts/inspect_memory.py      # View stored data
-python scripts/clear_memory.py        # Interactive memory management
-python scripts/view_conversations.py  # NEW: View/export conversation logs
-python scripts/nuclear_reset.py       # NEW: Complete memory wipe
-```
-
-### Run Tests
-```bash
-pytest                              # All 43+ tests
-pytest tests/test_memory_retrieval.py -v           # Core memory tests
-pytest tests/test_semantic_contradictions.py -v    # Contradiction tests
-```
-
----
-
-## TESTING PRIORITIES
-
-### ✅ Validated Scenarios
-
-1. **Cross-session memory persistence** ✅
-2. **Familial relationships** (SIBLING_OF, PARENT_OF) ✅
-3. **Contradiction handling** (job change, age corrections) ✅
-4. **Semantic state transitions** (visiting → returned home) ✅
-5. **Multi-turn context dependencies** ✅
-6. **Complex entity networks** (14+ relationships) ✅
-7. **Attribute extraction** (age, role, location) ✅
-
-### 🔍 Test These Next
-
-1. **Long conversation sessions** (50+ turns)
-2. **Memory under load** (1000+ stored facts)
-3. **Complex temporal reasoning** ("last Tuesday", "next month")
-4. **Ambiguous contradictions** (context-dependent statements)
-5. **Observer accuracy** with qwen3:1.7b vs :4b
-
----
-
-## FILES TO KNOW
-
-### Critical Files
-- `src/observer/prompts.py` - **SEMANTIC_CONTRADICTION_PROMPT** + EXTRACTION_PROMPT
-- `src/observer/observer.py` - Contradiction detection logic
-- `src/memory/context_assembler.py` - Retrieval + filtering + boosting
-- `src/memory/graph_store.py` - Temporal metadata handling
-- `src/main.py` - Chat interface + pre-flight check
-
-### Test Files
-- `tests/test_memory_retrieval.py` - 43 core memory tests
-- `tests/test_semantic_contradictions.py` - Temporal state tests
-- `tests/test_integration.py` - End-to-end tests
-- `tests/test_observer.py` - Entity extraction tests
+### Configuration
+- `src/config.py` - All settings (models, top-k, decay rates)
+- `.env` - Environment overrides
 
 ### Utilities
-- `scripts/inspect_memory.py` - View memory contents
-- `scripts/clear_memory.py` - Memory management menu
-- `scripts/observer_giana_live.py` - Test observer extraction
+- `scripts/inspect_memory.py` - View stored memories
+- `scripts/view_conversations.py` - Browse conversation logs
+- `scripts/nuclear_reset.py` - Complete memory wipe
 
 ---
 
-## DEBUGGING TIPS
+## Known Issues & Debugging
 
-### Contradiction Not Detected?
-1. Check `src/observer/prompts.py` → SEMANTIC_CONTRADICTION_PROMPT
-2. Test observer: `python scripts/observer_giana_live.py`
-3. Verify LLM response format (should be JSON with "contradictions" array)
-4. Check fallback: `_simple_contradiction_check` should catch same-predicate changes
+### If memories aren't persisting:
+1. Ensure graceful exit with `exit` command (waits for observer)
+2. Check utility grading: `grep "Utility grading:" <terminal_output>`
+3. Verify observer completion before shutdown
+4. Inspect stored data: `python scripts/inspect_memory.py`
 
-### Memory Not Persisting?
-1. Wait for "Memories saved. Goodbye!" before restart
-2. Check Docker: `docker ps` (FalkorDB must be running)
-3. Verify: `python scripts/inspect_memory.py`
+### If old facts are surfacing:
+1. Check contradiction detection is marking facts as superseded
+2. Verify filtering logic in `context_assembler.py` (_graph_search)
+3. Look for `superseded_by` field in graph relationships
 
-### Slow Responses?
-1. Check memory count: `/stats`
-2. If >10k memories, clear low-utility: `python scripts/clear_memory.py`
-3. Reduce `vector_search_top_k` in config.py
+### If utility grading is wrong:
+1. Review `UTILITY_PROMPT` in `src/observer/prompts.py`
+2. Check defensive logs for grading decisions
+3. Consider upgrading observer model from qwen3:1.7b to :4b
 
-### Old Facts Surfacing?
-1. Verify contradiction detection is marking facts as superseded
-2. Check graph search filtering logic in `context_assembler.py`
-3. Inspect: `python scripts/inspect_memory.py` → look for `superseded_by` field
-
----
-
-## NEXT STEPS
-
-### Immediate
-1. Test semantic contradiction detection with real-world scenarios
-2. Monitor false positives/negatives in contradiction detection
-3. Tune recency boost and state preference weights
-
-### Short-Term
-1. Implement memory pruning for LOW/DISCARD utility
-2. Upgrade observer to qwen3:4b if extraction quality insufficient
-
-### Long-Term
-1. Add pronoun resolution (coreference)
-2. Query expansion for better retrieval
-3. Web UI for non-technical users
-4. Voice I/O integration
+### If extraction quality is poor:
+1. Observer model (qwen3:1.7b) may struggle with complex sentences
+2. Upgrade option: `OBSERVER_MODEL=qwen3:4b` in config
+3. Test extraction: `python scripts/observer_giana_live.py`
 
 ---
 
-## PERFORMANCE BENCHMARKS
+## Testing
 
-| Metric | v1.0.0 | v1.1.0 | Improvement |
-|--------|--------|--------|-------------|
-| DISCARD turns | ~2s | ~0.5s | **4x faster** |
-| HIGH/MEDIUM turns | ~6s | ~2-3s | **2-3x faster** |
-| Context retrieval | ~150ms | ~100ms | **1.5x faster** |
-| Contradiction detection | Same-predicate only | Semantic | **Much smarter** |
+**Run all tests:**
+```bash
+pytest                                          # All tests
+pytest tests/test_memory_retrieval.py -v       # Core memory
+pytest tests/test_semantic_contradictions.py -v # Contradiction detection
+```
 
----
-
-## SUCCESS CRITERIA
-
-✅ Pre-flight check passes
-✅ All 43+ tests pass
-✅ System remembers across restarts
-✅ Contradictions detected and superseded
-✅ Old facts filtered from retrieval
-✅ Response time <5 seconds
-✅ Entities extracted with attributes
-✅ Relationships properly typed
+**Test coverage:**
+- Cross-session persistence
+- Familial relationships (SIBLING_OF, PARENT_OF)
+- Contradiction handling (job changes, location moves)
+- Semantic state transitions (VISITING → RETURNED_HOME)
+- Attribute updates (AGE 24 → AGE 25)
+- Complex entity networks (14+ relationships)
 
 ---
 
-## REPOSITORY
+## Configuration Tuning
 
-**GitHub**: https://github.com/jkstl/lcr-codex_CLAUDEREVIEW
+**For faster responses:**
+- Reduce `VECTOR_SEARCH_TOP_K` (default: 15)
+- Reduce `RERANK_TOP_K` (default: 5)
 
-**Recent Commits (v1.1.0)**:
-- `56b3791` - Semantic contradiction detection + temporal state tracking
-- `254414a` - Parallelize database queries + observer LLM tasks
-- `e2c1b9c` - Update README with accurate configuration
+**For better recall:**
+- Increase `VECTOR_SEARCH_TOP_K` (up to 20-25)
+- Increase `GRAPH_SEARCH_TOP_K` (default: 10)
 
-**Test Status**: 43/43 passing ✅
+**For different retention:**
+- Adjust `TEMPORAL_DECAY_*` values in `config.py`
+- Core facts never decay (0 = disabled)
+- HIGH: 180 days, MEDIUM: 60 days, LOW: 14 days
 
 ---
 
-## FINAL NOTES
+## Next Development Priorities
 
-**v1.1.0 is production-ready** with major improvements:
-- Semantic contradiction detection solves the "Mom visiting" bug
-- Performance optimizations make it 2-4x faster
-- Temporal state tracking prevents outdated facts from surfacing
+### High Priority
+1. **Memory pruning** - Automatic deletion of old LOW/DISCARD utility memories
+2. **Monitor utility grading** - Ensure enhanced prompt works in production
+3. **Observer model evaluation** - Test qwen3:1.7b vs :4b extraction quality
 
-**Focus areas for next agent:**
-1. Monitor contradiction detection accuracy in production
-2. Tune recency boost and state preference weights
-3. Test with 1000+ stored memories
-4. Consider observer model upgrade if extraction quality drops
+### Medium Priority
+1. **Pronoun resolution** - Coreference chain tracking
+2. **Query expansion** - Synonym/variation handling for better retrieval
+3. **Recency boost tuning** - Optimize the 30% boost for recent corrections
 
-Good luck! 🚀
+### Low Priority
+1. **Web UI** - Non-technical user interface
+2. **Voice I/O** - TTS/STT integration (streaming already supports this)
+3. **Background pruning task** - Scheduled cleanup of expired memories
+
+---
+
+## Important Notes for Developers
+
+**Utility Grading Bug (Fixed in v1.1.3):**
+- Previous versions incorrectly graded detailed technical discussions as DISCARD
+- Enhanced prompt now explicitly recognizes projects, technical details, user work as HIGH
+- Test case: `test_utility_fix.py` validates the fix
+
+**Fact Type Classification:**
+- `core`: User's name, work schedule, home address, family, owned devices (never decay)
+- `preference`: Opinions, likes/dislikes, feelings (60-day half-life)
+- `episodic`: One-time events, meetings, trips (14-day half-life)
+
+**Source-Based Extraction:**
+- Facts extracted from USER statements only (confidence=1.0)
+- Assistant inferences tagged separately (confidence=0.3)
+- Prevents hallucinated facts from being stored as ground truth
+
+**Temporal States:**
+- `ongoing`: Currently true (e.g., "visiting", "working at")
+- `completed`: Past events (e.g., "visited", "worked at")
+- `planned`: Future events (e.g., "scheduled for", "planning to")
+
+**Contradictions:**
+- LLM detects semantic contradictions across different predicates
+- Understands state transitions: VISITING → RETURNED_HOME
+- Recognizes mutual exclusion: WORKS_AT A vs WORKS_AT B
+- Handles attribute updates: AGE 24 → AGE 25
+
+---
+
+## Git Repository
+
+**GitHub:** https://github.com/jkstl/lcr-codex_CLAUDEREVIEW
+
+**Latest Commit:** 299b0c9 (v1.1.3)
+
+**Test Status:** All 43+ tests passing
 
 ---
 
 *Last Updated: 2026-01-20*
 *Version: 1.1.3*
-*Status: Production-ready with enhanced utility grading and conversation logging*
