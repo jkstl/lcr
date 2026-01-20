@@ -35,6 +35,7 @@ Instructions:
 1. Extract ALL people, places, organizations, and objects mentioned
 2. Capture attributes in the "attributes" field (age, role, occupation, etc.)
 3. Identify relationships between entities using these types:
+   - Identity: HAS_NAME, NICKNAME, GOES_BY (for user's name or preferred name)
    - Familial: SIBLING_OF, PARENT_OF, CHILD_OF, SPOUSE_OF, etc.
    - Social: FRIEND_OF, DATING, MARRIED_TO, BROKE_UP_WITH, etc.
    - Professional: WORKS_AT, MANAGES, COLLEAGUE_OF, etc.
@@ -45,7 +46,7 @@ Instructions:
 4. When extracting statements from the user, the subject should be "User"
 5. Extract concrete facts only - do not infer or hallucinate
 6. CLASSIFY THE FACT TYPE:
-   - "core": Work schedules, recurring routines, family relationships, home address, 
+   - "core": User's name, work schedules, recurring routines, family relationships, home address, 
              technology/devices owned, persistent life facts
    - "preference": Opinions, likes/dislikes, feelings, preferences
    - "episodic": One-time events, plans, meetings, trips
