@@ -13,7 +13,9 @@ class OllamaClient:
 
     def __init__(self, base_url: str | None = None) -> None:
         self.base_url = base_url or settings.ollama_host
-        self._client = httpx.AsyncClient(base_url=self.base_url, timeout=60.0)
+        # Increased timeout to handle parallel observer tasks
+        # When multiple observers run concurrently, Ollama may take longer to respond
+        self._client = httpx.AsyncClient(base_url=self.base_url, timeout=180.0)
 
     async def generate(
         self,

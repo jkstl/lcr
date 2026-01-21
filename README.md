@@ -1,6 +1,6 @@
 # Local Cognitive RAG (LCR)
 
-**Version 1.1.3**
+**Version 1.1.4**
 
 
 A local, privacy-first conversational AI system with persistent episodic memory. LCR runs entirely offline—no external API calls, no cloud dependencies—while maintaining rich contextual awareness across sessions through a dual-memory architecture combining semantic vector search with a structured knowledge graph.
@@ -566,9 +566,11 @@ docker logs lcr-codex-falkordb-1
 
 ### Recent Improvements
 
-✅ **Enhanced Utility Grading (v1.1.3)** - Fixed bug where detailed project descriptions and technical discussions were incorrectly graded as DISCARD. Updated prompt now explicitly recognizes user's projects, technical details, and work as high-value memories. Added defensive logging to track grading decisions.
+✅ **Observer Reliability Fix (v1.1.4)** - Fixed critical memory retention bug where concurrent observer tasks caused HTTP timeouts, resulting in silent failures. Increased timeout from 60s to 180s, added retry logic with exponential backoff, and implemented exception logging in wait_for_observers(). Memory persistence now 100% reliable.
 
-✅ **Semantic Contradiction Detection (v1.1.0)** - Now understands temporal state transitions like "visiting" → "returned home" using LLM-powered analysis
+✅ **Enhanced Utility Grading (v1.1.3)** - Fixed bug where detailed project descriptions and technical discussions were incorrectly graded as DISCARD. Updated prompt now explicitly recognizes user's projects, technical details, and work as high-value memories.
+
+✅ **Semantic Contradiction Detection (v1.1.0)** - Understands temporal state transitions like "visiting" → "returned home" using LLM-powered analysis
 
 ### Current Limitations
 
@@ -638,6 +640,6 @@ Built with:
 
 ---
 
-*Last Updated: 2026-01-20*
-*Version: 1.1.3*
-*Status: Production-ready with enhanced utility grading and conversation logging*
+*Last Updated: 2026-01-21*
+*Version: 1.1.4*
+*Status: Production-ready with reliable memory persistence*

@@ -92,7 +92,18 @@ async def trigger_observer_node(state: ConversationState) -> ConversationState:
 async def wait_for_observers() -> None:
     """Wait for all pending observer tasks to complete."""
     if _observer_tasks:
-        await asyncio.gather(*_observer_tasks, return_exceptions=True)
+        import logging
+        logger = logging.getLogger(__name__)
+
+        results = await asyncio.gather(*_observer_tasks, return_exceptions=True)
+
+        # Log any exceptions that occurred during observer processing
+        for i, result in enumerate(results):
+            if isinstance(result, Exception):
+                logger.error(f"Observer task {i} failed with exception: {type(result).__name__}: {result}")
+                import traceback
+                logger.error("".join(traceback.format_exception(type(result), result, result.__traceback__)))
+
         _observer_tasks.clear()
 
 

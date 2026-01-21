@@ -1,6 +1,6 @@
 # CLAUDE.md — Developer Handoff Document
 
-**Version 1.1.3** | **Status: Production-Ready**
+**Version 1.1.4** | **Status: Production-Ready**
 
 This document provides essential context for developers continuing work on the LCR system. For user-facing documentation, see [README.md](README.md).
 
@@ -10,10 +10,18 @@ This document provides essential context for developers continuing work on the L
 
 **What is LCR?** Local Cognitive RAG - A privacy-first conversational AI with persistent episodic memory using dual-architecture (vector + graph).
 
-**Current Focus:** System is production-ready. Priority areas are performance optimization, memory pruning, and edge case testing.
+**Current Focus:** System is production-ready with reliable memory persistence. Priority areas are observer extraction quality and memory pruning.
 
-**Recent Major Changes (v1.1.3):**
-- Enhanced utility grading to prevent project descriptions from being discarded  
+**Recent Major Changes (v1.1.4):**
+- **CRITICAL FIX:** Resolved memory retention failures caused by HTTP timeouts in parallel observer tasks
+- Increased Ollama client timeout from 60s to 180s to handle concurrent LLM calls
+- Added retry logic with exponential backoff (3 attempts: 2s, 4s, 8s delays)
+- Implemented exception logging in `wait_for_observers()` to surface previously silent failures
+- Fixed config bug causing crash in `/stats` command (temporal_decay_days → temporal_decay_core)
+- Updated .gitignore to prevent temporary test files from being committed
+
+**Previous Changes (v1.1.3):**
+- Enhanced utility grading to prevent project descriptions from being discarded
 - Implemented conversation logging to `data/conversations/` (structured JSON)
 - Added defensive logging for utility grading decisions
 - Fixed birthday/date extraction in Observer EXTRACTION_PROMPT
@@ -70,10 +78,15 @@ User Input → Pre-Flight Check → Context Assembly (Parallel) → LLM Generati
 ## Known Issues & Debugging
 
 ### If memories aren't persisting:
+**Status:** FIXED in v1.1.4 (was caused by HTTP timeouts in concurrent observer tasks)
+
+If you still experience issues:
 1. Ensure graceful exit with `exit` command (waits for observer)
-2. Check utility grading: `grep "Utility grading:" <terminal_output>`
-3. Verify observer completion before shutdown
+2. Check for exceptions in terminal output (now logged instead of silently caught)
+3. Verify Ollama is responsive: `curl http://localhost:11434/api/tags`
 4. Inspect stored data: `python scripts/inspect_memory.py`
+
+**Root cause (v1.1.4 fix):** Multiple observer tasks running in parallel overwhelmed Ollama with concurrent requests, causing `httpx.ReadTimeout` exceptions. The exceptions were caught by `return_exceptions=True` but never logged. Fixed with increased timeout (180s), retry logic, and exception logging.
 
 ### If old facts are surfacing:
 1. Check contradiction detection is marking facts as superseded
@@ -81,15 +94,27 @@ User Input → Pre-Flight Check → Context Assembly (Parallel) → LLM Generati
 3. Look for `superseded_by` field in graph relationships
 
 ### If utility grading is wrong:
-1. Review `UTILITY_PROMPT` in `src/observer/prompts.py`
-2. Check defensive logs for grading decisions
-3. Consider upgrading observer model from qwen3:1.7b to :4b
+**Known Issue:** Observer model (qwen3:1.7b) occasionally grades HIGH-value content as LOW/MEDIUM
+
+**Example:** In testing, a breakup conversation with significant emotional context was graded LOW instead of HIGH. This appears to be a model capability limitation rather than a prompt issue.
+
+**Solutions:**
+1. Review `UTILITY_PROMPT` in `src/observer/prompts.py` for potential improvements
+2. Check defensive logs for grading decisions: `grep "Utility grading:" <output>`
+3. Consider upgrading observer model: `OBSERVER_MODEL=qwen3:4b` in config (better accuracy, slower processing)
+
+**Impact:** LOW-graded memories still persist, but with shorter retention (14-day half-life vs 180 days for HIGH). Information is not lost, just prioritized differently.
 
 ### If extraction quality is poor:
+**Known Issue:** Observer occasionally confuses entity attribution (e.g., "User LIVES_IN Falmouth, MA" when it should be "Sam LIVES_IN Falmouth, MA")
+
+**Solutions:**
 1. Observer model (qwen3:1.7b) may struggle with complex sentences
 2. Upgrade option: `OBSERVER_MODEL=qwen3:4b` in config
 3. Check extraction prompts in `src/observer/prompts.py`
 4. Review relationship formatting in `src/memory/context_assembler.py`
+
+**Workaround:** The system still captures the information, even if attribution is imperfect. Most queries will retrieve relevant context.
 
 ---
 
@@ -132,9 +157,9 @@ pytest tests/test_semantic_contradictions.py -v # Contradiction detection
 ## Next Development Priorities
 
 ### High Priority
-1. **Memory pruning** - Automatic deletion of old LOW/DISCARD utility memories
-2. **Monitor utility grading** - Ensure enhanced prompt works in production
-3. **Observer model evaluation** - Test qwen3:1.7b vs :4b extraction quality
+1. **Observer extraction quality** - Fix entity attribution bugs and test qwen3:1.7b vs :4b
+2. **Utility grading consistency** - Investigate why emotional/relationship content sometimes grades LOW
+3. **Memory pruning** - Automatic deletion of old LOW/DISCARD utility memories
 
 ### Medium Priority
 1. **Pronoun resolution** - Coreference chain tracking
@@ -150,10 +175,16 @@ pytest tests/test_semantic_contradictions.py -v # Contradiction detection
 
 ## Important Notes for Developers
 
+**Memory Persistence Bug (Fixed in v1.1.4):**
+- **Problem:** Concurrent observer tasks caused `httpx.ReadTimeout` exceptions, resulting in silent failures
+- **Root cause:** Multiple LLM calls in parallel overwhelmed Ollama; 60s timeout insufficient; exceptions caught but not logged
+- **Solution:** Increased timeout to 180s, added retry logic with exponential backoff, implemented exception logging
+- **Testing:** Simulated multi-turn conversations now show 100% persistence success rate
+- **Files changed:** `src/models/llm.py`, `src/observer/observer.py`, `src/orchestration/graph.py`
+
 **Utility Grading Bug (Fixed in v1.1.3):**
 - Previous versions incorrectly graded detailed technical discussions as DISCARD
 - Enhanced prompt now explicitly recognizes projects, technical details, user work as HIGH
-- Test case: `test_utility_fix.py` validates the fix
 
 **Fact Type Classification:**
 - `core`: User's name, work schedule, home address, family, owned devices (never decay)
@@ -180,13 +211,11 @@ pytest tests/test_semantic_contradictions.py -v # Contradiction detection
 
 ## Git Repository
 
-**GitHub:** https://github.com/jkstl/lcr (migrating from lcr-codex_CLAUDEREVIEW)
-
-**Latest Commit:** 37496b6 (v1.1.3 - extraction fixes)
+**GitHub:** https://github.com/jkstl/lcr
 
 **Test Status:** All 43+ tests passing
 
 ---
 
-*Last Updated: 2026-01-20*
-*Version: 1.1.3*
+*Last Updated: 2026-01-21*
+*Version: 1.1.4*

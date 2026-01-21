@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from json import JSONDecodeError, loads
-from typing import Any
+from typing import Any, Callable, TypeVar
 
 from ..config import settings
 from ..models.embedder import Embedder
@@ -22,6 +22,27 @@ from .prompts import (
 )
 
 LOGGER = logging.getLogger(__name__)
+
+T = TypeVar('T')
+
+
+async def retry_on_timeout(func: Callable[[], Any], max_retries: int = 3, delay: float = 2.0) -> Any:
+    """Retry a function on httpx.ReadTimeout with exponential backoff."""
+    import httpx
+
+    for attempt in range(max_retries):
+        try:
+            return await func()
+        except httpx.ReadTimeout as e:
+            if attempt == max_retries - 1:
+                LOGGER.error(f"Max retries ({max_retries}) exceeded for LLM call")
+                raise
+            wait_time = delay * (2 ** attempt)
+            LOGGER.warning(f"LLM call timed out (attempt {attempt + 1}/{max_retries}), retrying in {wait_time}s...")
+            await asyncio.sleep(wait_time)
+        except Exception as e:
+            # Don't retry on other exceptions
+            raise
 
 
 
@@ -142,7 +163,7 @@ class Observer:
 
     async def _grade_utility(self, text: str) -> UtilityGrade:
         prompt = UTILITY_PROMPT.format(text=text)
-        response = await self.llm.generate(self.model, prompt)
+        response = await retry_on_timeout(lambda: self.llm.generate(self.model, prompt))
         cleaned = response.strip().upper()
         try:
             grade = UtilityGrade(cleaned.lower())
@@ -156,12 +177,14 @@ class Observer:
 
     async def _generate_summary(self, text: str) -> str:
         prompt = SUMMARY_PROMPT.format(text=text)
-        return (await self.llm.generate(self.model, prompt)).strip()
+        response = await retry_on_timeout(lambda: self.llm.generate(self.model, prompt))
+        return response.strip()
 
     async def _generate_retrieval_queries(self, text: str) -> list[str]:
         prompt = QUERIES_PROMPT.format(text=text)
         try:
-            data = loads(await self.llm.generate(self.model, prompt))
+            response = await retry_on_timeout(lambda: self.llm.generate(self.model, prompt))
+            data = loads(response)
             if isinstance(data, list):
                 return [str(item) for item in data]
         except JSONDecodeError:
@@ -171,7 +194,8 @@ class Observer:
     async def _extract_structured_data(self, text: str) -> dict[str, list[dict]]:
         prompt = EXTRACTION_PROMPT.format(text=text)
         try:
-            return loads(await self.llm.generate(self.model, prompt))
+            response = await retry_on_timeout(lambda: self.llm.generate(self.model, prompt))
+            return loads(response)
         except JSONDecodeError:
             return {"entities": [], "relationships": []}
 

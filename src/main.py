@@ -351,7 +351,10 @@ async def show_memory_stats():
     stats_table.add_row("", "")  # Separator
     stats_table.add_row("Vector Search Top-K", str(settings.vector_search_top_k))
     stats_table.add_row("Rerank Top-K", str(settings.rerank_top_k))
-    stats_table.add_row("Temporal Decay (days)", str(settings.temporal_decay_days))
+    stats_table.add_row("Temporal Decay (core)", f"{settings.temporal_decay_core} days (never decays)")
+    stats_table.add_row("Temporal Decay (HIGH)", f"{settings.temporal_decay_high} days")
+    stats_table.add_row("Temporal Decay (MEDIUM)", f"{settings.temporal_decay_medium} days")
+    stats_table.add_row("Temporal Decay (LOW)", f"{settings.temporal_decay_low} days")
 
     console.print(stats_table)
     console.print()

@@ -1,4 +1,5 @@
 .venv/
+venv/
 __pycache__/
 *.py[cod]
 *.egg-info/
@@ -16,9 +17,8 @@ VERIFICATION_GUIDE.md
 MAIN_UI_UPDATE.md
 SESSION_COMPLETE.md
 
-# Temporary test files
-test_extraction.py
-test_extraction_improved.py
-test_quick.py
+# Temporary test files (root level)
+test_*.py
+check_*.py
+VERSION
 nul
-CLAUDE.md
