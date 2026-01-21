@@ -13,9 +13,11 @@ This document provides essential context for developers continuing work on the L
 **Current Focus:** System is production-ready. Priority areas are performance optimization, memory pruning, and edge case testing.
 
 **Recent Major Changes (v1.1.3):**
-- Enhanced utility grading to prevent project descriptions from being discarded
-- Implemented conversation logging to `data/conversations/`
+- Enhanced utility grading to prevent project descriptions from being discarded  
+- Implemented conversation logging to `data/conversations/` (structured JSON)
 - Added defensive logging for utility grading decisions
+- Fixed birthday/date extraction in Observer EXTRACTION_PROMPT
+- Improved relationship formatting to prevent past-relationship misinterpretation (e.g., BROKE_UP_WITH)
 
 ---
 
@@ -53,6 +55,9 @@ User Input → Pre-Flight Check → Context Assembly (Parallel) → LLM Generati
 
 ### Configuration
 - `src/config.py` - All settings (models, top-k, decay rates)
+  - **Embedding model:** `nomic-embed-text` (768-dim, optimized for semantic search)
+  - **Main model:** `qwen3:14b`
+  - **Observer model:** `qwen3:1.7b`
 - `.env` - Environment overrides
 
 ### Utilities
@@ -83,7 +88,8 @@ User Input → Pre-Flight Check → Context Assembly (Parallel) → LLM Generati
 ### If extraction quality is poor:
 1. Observer model (qwen3:1.7b) may struggle with complex sentences
 2. Upgrade option: `OBSERVER_MODEL=qwen3:4b` in config
-3. Test extraction: `python scripts/observer_giana_live.py`
+3. Check extraction prompts in `src/observer/prompts.py`
+4. Review relationship formatting in `src/memory/context_assembler.py`
 
 ---
 
@@ -174,9 +180,9 @@ pytest tests/test_semantic_contradictions.py -v # Contradiction detection
 
 ## Git Repository
 
-**GitHub:** https://github.com/jkstl/lcr-codex_CLAUDEREVIEW
+**GitHub:** https://github.com/jkstl/lcr (migrating from lcr-codex_CLAUDEREVIEW)
 
-**Latest Commit:** 299b0c9 (v1.1.3)
+**Latest Commit:** 37496b6 (v1.1.3 - extraction fixes)
 
 **Test Status:** All 43+ tests passing
 
