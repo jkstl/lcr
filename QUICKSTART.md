@@ -9,12 +9,13 @@ Complete setup and usage guide for the Local Cognitive RAG system.
 ```bash
 # Required
 - Python 3.11+
-- Docker Desktop
+- Docker Desktop (Windows/Mac) OR Docker Engine + Docker Compose Plugin (Linux)
 - Ollama
 
 # Verify installations
 python --version    # Should be 3.11+
 docker --version
+docker compose version  # Should explicitly check compose availability
 ollama --version
 ```
 
@@ -277,6 +278,20 @@ python scripts/clear_memory.py
 # Select option 4 (Restart Docker services)
 ```
 
+### Issue: "unknown command: docker compose"
+
+**Cause:** Missing Docker Compose V2 plugin on Linux (Ubuntu 24.04+ default).
+
+**Solution:**
+```bash
+# Install the plugin
+sudo apt-get update
+sudo apt-get install docker-compose-plugin
+
+# Verify
+docker compose version
+```
+
 ### Issue: "LanceDB error" or "pyarrow not found"
 
 **Solution:**
@@ -289,7 +304,10 @@ pip install -r requirements.txt --upgrade
 
 **Solution:**
 ```bash
-# Stop conflicting services
+# EASIEST: Run the reset script (auto-clears conflicts)
+python scripts/nuclear_reset.py
+
+# MANUAL: Stop conflicting services
 docker compose down
 
 # Or edit .env to use different ports:

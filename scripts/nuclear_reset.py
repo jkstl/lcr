@@ -12,6 +12,7 @@ from rich.prompt import Confirm
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.config import settings
+from scripts.docker_utils import run_docker_compose, get_docker_compose_cmd, cleanup_conflicting_containers
 
 
 async def nuclear_reset():
@@ -41,8 +42,8 @@ async def nuclear_reset():
     # Step 1: Stop Docker services
     print("1. [yellow]Stopping Docker services...[/yellow]")
     try:
-        result = subprocess.run(
-            ["docker", "compose", "down"],
+        result = run_docker_compose(
+            ["down"],
             cwd=project_root,
             capture_output=True,
             text=True,
@@ -55,6 +56,9 @@ async def nuclear_reset():
     except Exception as e:
         print(f"   [yellow]⚠[/yellow] Could not stop Docker (may not be running): {e}")
     
+    # Extra cleanup for port conflicts (zombie containers from renamed folders)
+    cleanup_conflicting_containers()
+
     # Step 2: Delete all data
     print("\n2. [yellow]Deleting all data...[/yellow]")
     
@@ -79,8 +83,8 @@ async def nuclear_reset():
     # Step 4: Restart Docker services
     print("\n4. [yellow]Starting Docker services with clean state...[/yellow]")
     try:
-        result = subprocess.run(
-            ["docker", "compose", "up", "-d", "falkordb", "redis"],
+        result = run_docker_compose(
+            ["up", "-d", "falkordb", "redis"],
             cwd=project_root,
             capture_output=True,
             text=True,

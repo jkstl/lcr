@@ -111,7 +111,9 @@ A local, privacy-first conversational AI system with persistent episodic memory.
 
 - **Python** 3.10+ (3.11+ recommended)
 - **VRAM** 16GB+ (10GB for main model, buffer for reranker)
-- **Docker** or Docker Desktop (for FalkorDB/Redis)
+- **Docker** and **Docker Compose** (V2 Plugin recommended)
+  - Windows/Mac: Included with Docker Desktop
+  - Linux: Install `docker-compose-plugin` (or `docker-compose` standalone)
 - **Ollama** (for local LLM inference)
 
 ---
@@ -455,6 +457,13 @@ If Docker containers fail with "port already allocated":
 ```bash
 # Stop and remove conflicting containers
 docker compose down
+# Stop and remove conflicting containers
+docker compose down
+
+# Or use the built-in nuclear reset which auto-detects and removes conflicts:
+python scripts/nuclear_reset.py
+
+# Manual removal if needed:
 docker rm -f $(docker ps -aq --filter name=lcr-codex) 2>/dev/null
 
 # Restart services
@@ -470,6 +479,18 @@ sudo systemctl start docker
 # Add user to docker group (avoid sudo for docker commands)
 sudo usermod -aG docker $USER
 newgrp docker
+
+# Ensure Docker daemon is running
+sudo systemctl start docker
+
+# Add user to docker group (avoid sudo for docker commands)
+sudo usermod -aG docker $USER
+newgrp docker
+
+# Install Docker Compose Plugin (Ubuntu/Debian)
+sudo apt-get update
+sudo apt-get install docker-compose-plugin
+# Verify: docker compose version
 
 # Activate virtual environment
 source .venv/bin/activate

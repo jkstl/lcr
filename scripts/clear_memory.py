@@ -14,6 +14,7 @@ from rich.console import Console
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.config import settings
+from scripts.docker_utils import run_docker_compose, cleanup_conflicting_containers
 
 console = Console()
 
@@ -63,8 +64,8 @@ async def restart_docker_services():
         project_root = Path(__file__).resolve().parents[1]
 
         print("\n[yellow]Stopping Docker services...[/yellow]")
-        result = subprocess.run(
-            ["docker", "compose", "down"],
+        result = run_docker_compose(
+            ["down"],
             cwd=project_root,
             capture_output=True,
             text=True,
@@ -77,9 +78,12 @@ async def restart_docker_services():
 
         print("[green]✓[/green] Services stopped")
 
+        # Cleanup potential conflicts
+        cleanup_conflicting_containers()
+
         print("[yellow]Starting Docker services...[/yellow]")
-        result = subprocess.run(
-            ["docker", "compose", "up", "-d", "falkordb", "redis"],
+        result = run_docker_compose(
+            ["up", "-d", "falkordb", "redis"],
             cwd=project_root,
             capture_output=True,
             text=True,
@@ -115,8 +119,8 @@ async def stop_docker_services():
         project_root = Path(__file__).resolve().parents[1]
 
         print("\n[yellow]Stopping Docker services...[/yellow]")
-        result = subprocess.run(
-            ["docker", "compose", "down"],
+        result = run_docker_compose(
+            ["down"],
             cwd=project_root,
             capture_output=True,
             text=True,
@@ -141,8 +145,8 @@ async def start_docker_services():
         project_root = Path(__file__).resolve().parents[1]
 
         print("\n[yellow]Starting Docker services...[/yellow]")
-        result = subprocess.run(
-            ["docker", "compose", "up", "-d", "falkordb", "redis"],
+        result = run_docker_compose(
+            ["up", "-d", "falkordb", "redis"],
             cwd=project_root,
             capture_output=True,
             text=True,
