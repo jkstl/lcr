@@ -214,45 +214,49 @@ class TTSEngine:
         if not self.config.enabled or not sentences:
             return
 
-        # Generate and play first sentence immediately
-        if sentences:
-            first_result = await self.synthesize(sentences[0])
-            if first_result is not None:
-                first_audio, first_sample_rate = first_result
-                # Start playing first sentence
-                play_task = asyncio.create_task(
-                    asyncio.to_thread(
-                        sd.play,
-                        first_audio,
-                        samplerate=first_sample_rate,
-                        blocking=True,
+        try:
+            # Generate and play first sentence immediately
+            if sentences:
+                first_result = await self.synthesize(sentences[0])
+                if first_result is not None:
+                    first_audio, first_sample_rate = first_result
+                    # Start playing first sentence
+                    play_task = asyncio.create_task(
+                        asyncio.to_thread(
+                            sd.play,
+                            first_audio,
+                            samplerate=first_sample_rate,
+                            blocking=True,
+                        )
                     )
-                )
 
         # Generate remaining sentences while first plays
-        remaining_audios = []
-        if len(sentences) > 1:
-            for sentence in sentences[1:]:
-                result = await self.synthesize(sentence)
-                if result is not None:
-                    remaining_audios.append(result)
+            remaining_audios = []
+            if len(sentences) > 1:
+                for sentence in sentences[1:]:
+                    result = await self.synthesize(sentence)
+                    if result is not None:
+                        remaining_audios.append(result)
 
         # Wait for first sentence to finish
-        if 'play_task' in locals():
-            await play_task
+            if 'play_task' in locals():
+                await play_task
 
         # Play remaining sentences
-        for audio, sample_rate in remaining_audios:
-            try:
-                await asyncio.to_thread(
-                    sd.play,
-                    audio,
-                    samplerate=sample_rate,
-                    blocking=True,
-                )
-            except Exception as e:
-                LOGGER.error(f"Audio playback failed: {e}")
-                break
+            for audio, sample_rate in remaining_audios:
+                try:
+                    await asyncio.to_thread(
+                        sd.play,
+                        audio,
+                        samplerate=sample_rate,
+                        blocking=True,
+                    )
+                except Exception as e:
+                    LOGGER.error(f"Audio playback failed: {e}")
+                    break
+        except asyncio.CancelledError:
+            sd.stop()
+            raise
 
     def set_voice(self, voice: str) -> bool:
         """
