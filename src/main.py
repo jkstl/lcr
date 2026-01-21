@@ -520,6 +520,8 @@ async def run_chat():
                         tts_task.cancel()
                     # Play TTS in background task so user can continue typing
                     tts_task = asyncio.create_task(tts_engine.speak_streaming(sentences))
+                    # Yield to event loop so TTS task starts immediately
+                    await asyncio.sleep(0)
 
         except Exception as e:
             console.print(f"\n[red]✗ Error:[/red] {e}\n")

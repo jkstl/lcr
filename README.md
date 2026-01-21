@@ -11,7 +11,7 @@ A local, privacy-first conversational AI system with persistent episodic memory 
 
 ### Core Capabilities
 - **Persistent Cross-Session Memory** — Remembers conversations, facts, and relationships indefinitely across restarts
-- **Natural Voice Output (NEW v1.2.0)** — High-quality TTS with multiple female voices using Kokoro (82M parameters, ~210× real-time on GPU)
+- **Natural Voice Output (NEW v1.2.0)** — High-quality TTS with multiple voices using Kokoro (82M parameters, ~210× real-time on GPU)
 - **Intelligent Fact Classification** — Automatically categorizes memories as core facts (never decay), episodic events (short-lived), or preferences (medium-lived)
 - **Tiered Memory Decay** — Core facts permanent; HIGH utility fades over 180 days; MEDIUM over 60 days; LOW over 14 days
 - **Semantic Contradiction Detection** — LLM-powered detection understands temporal state transitions (e.g., "visiting" → "returned home")
