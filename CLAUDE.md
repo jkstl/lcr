@@ -1,6 +1,6 @@
 # CLAUDE.md — Developer Handoff Document
 
-**Version 1.1.4** | **Status: Production-Ready**
+**Version 1.2.0** | **Status: Production-Ready**
 
 This document provides essential context for developers continuing work on the LCR system. For user-facing documentation, see [README.md](README.md).
 
@@ -8,11 +8,11 @@ This document provides essential context for developers continuing work on the L
 
 ## Quick Context
 
-**What is LCR?** Local Cognitive RAG - A privacy-first conversational AI with persistent episodic memory using dual-architecture (vector + graph).
+**What is LCR?** Local Cognitive RAG - A privacy-first conversational AI with persistent episodic memory using dual-architecture (vector + graph) and natural voice output.
 
-**Current Status:** Production-ready with reliable memory persistence. System handles concurrent observer tasks properly via semaphore limiting.
+**Current Status:** Production-ready with reliable memory persistence and Kokoro TTS integration (v1.2.0).
 
-**Focus Areas:** Observer extraction quality improvements, utility grading consistency, automated memory pruning.
+**Focus Areas:** STT implementation (v1.2.x), observer extraction quality improvements, utility grading consistency, automated memory pruning.
 
 ---
 
@@ -48,13 +48,17 @@ User Input → Context Assembly (Parallel) → LLM Generation → Response
 - `src/memory/context_assembler.py` - Retrieval, filtering, temporal decay, recency boost
 - `src/memory/graph_store.py` - FalkorDB operations, superseded fact tracking
 - `src/orchestration/graph.py` - LangGraph state machine, streaming, **semaphore limiting**
+- `src/voice/tts.py` - **Kokoro TTS engine**, voice synthesis, async playback (v1.2.0)
+- `src/voice/utils.py` - Sentence splitting for streaming TTS (v1.2.0)
 
 ### Configuration
-- `src/config.py` - All settings (models, top-k, decay rates)
+- `src/config.py` - All settings (models, top-k, decay rates, TTS)
   - **Embedding model:** `nomic-embed-text` (768-dim)
   - **Main model:** `qwen3:14b`
   - **Observer model:** `qwen3:1.7b` (consider upgrading to :4b for better extraction)
-- `.env` - Environment overrides
+  - **TTS voice:** `af_sarah` (8 female voices available)
+  - **TTS enabled:** `False` (toggle with `/voice` command)
+- `.env` - Environment overrides (TTS_ENABLED, TTS_VOICE, TTS_SPEED)
 
 ### Utilities
 - `scripts/inspect_memory.py` - View stored memories
@@ -123,19 +127,19 @@ User Input → Context Assembly (Parallel) → LLM Generation → Response
 
 ## Next Development Priorities
 
-### High Priority
-1. **Observer extraction quality** - Fix entity attribution bugs, test qwen3:1.7b vs :4b
-2. **Utility grading consistency** - Investigate why emotional content sometimes grades LOW
-3. **Memory pruning** - Automatic deletion of old LOW/DISCARD utility memories
+### High Priority (v1.2.x)
+1. **Speech-to-Text (STT)** - Implement Whisper for voice input, wake word detection
+2. **TTS voice variety** - Test different Kokoro voices, add voice cloning support
+3. **Observer extraction quality** - Fix entity attribution bugs, test qwen3:1.7b vs :4b
 
 ### Medium Priority
-1. **Pronoun resolution** - Coreference chain tracking
-2. **Query expansion** - Synonym/variation handling for better retrieval
-3. **Recency boost tuning** - Optimize the 30% boost for recent corrections
+1. **Utility grading consistency** - Investigate why emotional content sometimes grades LOW
+2. **Memory pruning** - Automatic deletion of old LOW/DISCARD utility memories
+3. **Pronoun resolution** - Coreference chain tracking
 
 ### Low Priority
-1. **Web UI** - Non-technical user interface
-2. **Voice I/O** - TTS/STT integration (streaming already supports this)
+1. **Query expansion** - Synonym/variation handling for better retrieval
+2. **Web UI** - Non-technical user interface
 3. **Background pruning task** - Scheduled cleanup of expired memories
 
 ---
@@ -205,4 +209,4 @@ pytest tests/test_semantic_contradictions.py -v # Contradiction detection
 ---
 
 *Last Updated: 2026-01-21*
-*Version: 1.1.4*
+*Version: 1.2.0*

@@ -14,6 +14,8 @@ from rich import box
 from .config import settings
 from .orchestration.graph import create_conversation_graph, ConversationState, wait_for_observers, generate_response_streaming
 from .conversation_logger import ConversationLogger
+from .voice.tts import TTSEngine, VoiceConfig
+from .voice.utils import split_into_sentences
 
 console = Console()
 
@@ -389,6 +391,17 @@ async def run_chat():
     logger = ConversationLogger()
     logger.start_conversation(conversation_id)
 
+    # Initialize TTS engine
+    tts_config = VoiceConfig(
+        voice=settings.tts_voice,
+        speed=settings.tts_speed,
+        enabled=settings.tts_enabled,
+    )
+    tts_engine = TTSEngine(tts_config)
+
+    if tts_config.enabled:
+        console.print(f"[dim]🔊 TTS enabled with voice: {tts_config.voice}[/dim]")
+
     console.print(f"[dim]Conversation ID: {conversation_id}[/dim]\n")
 
     # Chat loop
@@ -428,6 +441,9 @@ async def run_chat():
                 "/status - Check system status\n"
                 "/stats  - Show memory statistics\n"
                 "/clear  - Clear screen\n"
+                "/voice  - Toggle TTS on/off\n"
+                "/voices - List available voices\n"
+                "/speed <0.5-2.0> - Set speech speed\n"
                 "/help   - Show this help\n"
                 "exit    - Exit the chat\n"
                 "quit    - Exit the chat",
@@ -438,6 +454,32 @@ async def run_chat():
 
         if user_input.lower() == "/stats":
             await show_memory_stats()
+            continue
+
+        # Voice commands
+        if user_input.lower() == "/voice":
+            enabled = tts_engine.toggle()
+            console.print(f"[cyan]🔊 TTS {'enabled' if enabled else 'disabled'}[/cyan]")
+            continue
+
+        if user_input.lower() == "/voices":
+            console.print(Panel(
+                "[bold]Available Voices:[/bold]\n\n" +
+                "\n".join([f"• {voice}" for voice in VoiceConfig.FEMALE_VOICES]) +
+                f"\n\n[dim]Current: {tts_engine.config.voice}[/dim]\n"
+                f"[dim]Usage: Set TTS_VOICE={tts_engine.config.voice} in .env[/dim]",
+                title="Kokoro TTS Voices",
+                border_style="cyan"
+            ))
+            continue
+
+        if user_input.lower().startswith("/speed "):
+            try:
+                speed = float(user_input.split()[1])
+                tts_engine.set_speed(speed)
+                console.print(f"[cyan]🔊 Speech speed set to {tts_engine.config.speed}x[/cyan]")
+            except (ValueError, IndexError):
+                console.print("[red]Usage: /speed <0.5-2.0>[/red]")
             continue
 
         state: ConversationState = {
@@ -462,9 +504,16 @@ async def run_chat():
 
             history.append({"role": "user", "content": user_input})
             history.append({"role": "assistant", "content": full_response.strip()})
-            
+
             # Log conversation turn
             logger.log_turn(user_input, full_response.strip())
+
+            # TTS: Speak the response (async, non-blocking for user input)
+            if tts_engine.config.enabled:
+                sentences = split_into_sentences(full_response.strip())
+                if sentences:
+                    # Play TTS in background task so user can continue typing
+                    asyncio.create_task(tts_engine.speak_streaming(sentences))
 
         except Exception as e:
             console.print(f"\n[red]✗ Error:[/red] {e}\n")

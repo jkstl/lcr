@@ -1,9 +1,9 @@
 # Local Cognitive RAG (LCR)
 
-**Version 1.1.4**
+**Version 1.2.0**
 
 
-A local, privacy-first conversational AI system with persistent episodic memory. LCR runs entirely offline—no external API calls, no cloud dependencies—while maintaining rich contextual awareness across sessions through a dual-memory architecture combining semantic vector search with a structured knowledge graph.
+A local, privacy-first conversational AI system with persistent episodic memory and natural voice output. LCR runs entirely offline—no external API calls, no cloud dependencies—while maintaining rich contextual awareness across sessions through a dual-memory architecture combining semantic vector search with a structured knowledge graph.
 
 ---
 
@@ -11,12 +11,20 @@ A local, privacy-first conversational AI system with persistent episodic memory.
 
 ### Core Capabilities
 - **Persistent Cross-Session Memory** — Remembers conversations, facts, and relationships indefinitely across restarts
+- **Natural Voice Output (NEW v1.2.0)** — High-quality TTS with multiple female voices using Kokoro (82M parameters, ~210× real-time on GPU)
 - **Intelligent Fact Classification** — Automatically categorizes memories as core facts (never decay), episodic events (short-lived), or preferences (medium-lived)
 - **Tiered Memory Decay** — Core facts permanent; HIGH utility fades over 180 days; MEDIUM over 60 days; LOW over 14 days
 - **Semantic Contradiction Detection** — LLM-powered detection understands temporal state transitions (e.g., "visiting" → "returned home")
 - **Temporal State Tracking** — Tracks ongoing vs completed states, filters expired facts, boosts recent corrections
 - **Entity & Relationship Extraction** — Builds a rich knowledge graph from natural conversation
 - **Cross-Encoder Reranking** — Retrieves the most semantically relevant context using dual-stage search
+
+### Voice I/O (v1.2.0+)
+- **Text-to-Speech (TTS)** — Kokoro TTS with 8 natural female voices (af_sarah, af_bella, af_sky, etc.)
+- **Sentence-by-Sentence Streaming** — Audio generation synchronized with LLM response
+- **Voice Controls** — Toggle on/off, change voices, adjust speed (0.5-2.0x) via commands
+- **Low Resource Usage** — Only 2-3GB VRAM, runs smoothly on CPU
+- **Speech-to-Text (STT)** — Coming in future release
 
 ### Memory Architecture
 - **Vector Store (LanceDB)** — Semantic embeddings for similarity-based retrieval
@@ -188,6 +196,9 @@ python -m src.main
 |---------|-------------|
 | `/status` | Recheck system health (models loaded, databases connected) |
 | `/stats` | Show detailed memory statistics (count, utility distribution, entity types) |
+| `/voice` | Toggle TTS on/off |
+| `/voices` | List available voices (af_sarah, af_bella, af_sky, etc.) |
+| `/speed <0.5-2.0>` | Set speech speed multiplier |
 | `/clear` | Clear screen (conversation history preserved) |
 | `/help` | Display available commands |
 | `exit` or `quit` | Save memories and exit gracefully |
@@ -566,11 +577,11 @@ docker logs lcr-codex-falkordb-1
 
 ### Recent Improvements
 
-✅ **Observer Reliability Fix (v1.1.4)** - Fixed critical memory retention bug where concurrent observer tasks caused HTTP timeouts, resulting in silent failures. Increased timeout from 60s to 180s, added retry logic with exponential backoff, and implemented exception logging in wait_for_observers(). Memory persistence now 100% reliable.
+✅ **Natural Voice Output (v1.2.0)** - Integrated Kokoro TTS for high-quality, natural-sounding speech. Features 8 female voices, sentence-by-sentence streaming, voice controls, and low resource usage (~2-3GB VRAM or CPU-only). Toggle with `/voice`, change voices in config, adjust speed with `/speed`.
 
-✅ **Enhanced Utility Grading (v1.1.3)** - Fixed bug where detailed project descriptions and technical discussions were incorrectly graded as DISCARD. Updated prompt now explicitly recognizes user's projects, technical details, and work as high-value memories.
+✅ **Observer Reliability Fix (v1.1.4)** - Fixed critical memory retention bug where concurrent observer tasks caused HTTP timeouts. Implemented semaphore limiting (max 2 concurrent), increased timeout to 180s, added retry logic with exponential backoff. Memory persistence now 100% reliable.
 
-✅ **Semantic Contradiction Detection (v1.1.0)** - Understands temporal state transitions like "visiting" → "returned home" using LLM-powered analysis
+✅ **Enhanced Utility Grading (v1.1.3)** - Fixed bug where detailed project descriptions were incorrectly graded as DISCARD. Updated prompt now explicitly recognizes user's projects and technical details as high-value memories.
 
 ### Current Limitations
 
@@ -636,10 +647,11 @@ Built with:
 - [LanceDB](https://lancedb.com/) — Vector database
 - [FalkorDB](https://www.falkordb.com/) — Knowledge graph database
 - [LangGraph](https://github.com/langchain-ai/langgraph) — Workflow orchestration
+- [Kokoro TTS](https://huggingface.co/spaces/hexgrad/Kokoro-TTS) — Natural voice synthesis
 - [Qwen Team](https://github.com/QwenLM/Qwen) — Open-source LLM models
 
 ---
 
 *Last Updated: 2026-01-21*
-*Version: 1.1.4*
-*Status: Production-ready with reliable memory persistence*
+*Version: 1.2.0*
+*Status: Production-ready with voice output*

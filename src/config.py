@@ -38,9 +38,15 @@ class Settings(BaseSettings):
     min_chunk_sentences: int = 3
     max_chunk_tokens: int = 512
 
-    # Voice placeholder (not implemented yet)
+    # Voice I/O (v1.2.0+)
+    # TTS (Text-to-Speech)
+    tts_enabled: bool = False
+    tts_voice: str = "af_sarah"  # Kokoro voice: af_sarah, af_bella, af_sky, etc.
+    tts_speed: float = 1.0       # Speech speed multiplier (0.5-2.0)
+
+    # STT (Speech-to-Text) - Not yet implemented
+    stt_enabled: bool = False
     whisper_model: str = "medium"
-    piper_voice: str = "en_US-lessac-medium"
     wake_word: str = "hey assistant"
 
     class Config:

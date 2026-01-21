@@ -1,0 +1,230 @@
+"""Text-to-Speech engine using Kokoro TTS."""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+import tempfile
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Optional
+
+import numpy as np
+import sounddevice as sd
+import soundfile as sf
+
+LOGGER = logging.getLogger(__name__)
+
+
+@dataclass
+class VoiceConfig:
+    """Configuration for TTS voice."""
+
+    voice: str = "af_sarah"  # Default female voice
+    speed: float = 1.0
+    enabled: bool = False
+
+    # Available Kokoro female voices
+    FEMALE_VOICES = [
+        "af_sarah",   # Natural, warm
+        "af_bella",   # Clear, professional
+        "af_sky",     # Bright, friendly
+        "af_nova",    # Smooth, calm
+        "af_nicole",  # Expressive
+        "af_alloy",   # Balanced
+        "af_heart",   # Gentle
+        "af_river",   # Dynamic
+    ]
+
+
+class TTSEngine:
+    """
+    Kokoro TTS engine for natural-sounding speech synthesis.
+
+    Features:
+    - High-quality female voices
+    - Fast inference (~210x real-time on GPU, 3-11x on CPU)
+    - Lightweight (82M parameters, ~2-3GB VRAM)
+    - Sentence-by-sentence streaming
+    """
+
+    def __init__(self, config: Optional[VoiceConfig] = None):
+        self.config = config or VoiceConfig()
+        self._model = None
+        self._initialized = False
+
+    def _lazy_load(self):
+        """Lazy load Kokoro model on first use to save startup time."""
+        if self._initialized:
+            return
+
+        try:
+            # Import here to avoid loading if TTS is disabled
+            from kokoro import KPipeline
+
+            LOGGER.info(f"Loading Kokoro TTS model with voice: {self.config.voice}")
+
+            # Initialize Kokoro pipeline
+            self._model = KPipeline(
+                lang_code="en-us",
+                voice=self.config.voice,
+            )
+
+            self._initialized = True
+            LOGGER.info("✓ Kokoro TTS initialized successfully")
+
+        except ImportError as e:
+            LOGGER.error(f"Failed to import Kokoro TTS: {e}")
+            LOGGER.error("Install with: pip install kokoro-onnx soundfile")
+            raise
+        except Exception as e:
+            LOGGER.error(f"Failed to initialize Kokoro TTS: {e}")
+            raise
+
+    async def synthesize(self, text: str) -> Optional[np.ndarray]:
+        """
+        Synthesize text to audio.
+
+        Args:
+            text: Text to convert to speech
+
+        Returns:
+            Audio array (numpy) or None if disabled/failed
+        """
+        if not self.config.enabled:
+            return None
+
+        if not text or not text.strip():
+            return None
+
+        try:
+            # Lazy load model
+            if not self._initialized:
+                await asyncio.to_thread(self._lazy_load)
+
+            # Generate audio in thread pool (blocking operation)
+            audio = await asyncio.to_thread(
+                self._model.generate,
+                text,
+                speed=self.config.speed,
+            )
+
+            return audio
+
+        except Exception as e:
+            LOGGER.error(f"TTS synthesis failed: {e}")
+            return None
+
+    async def speak(self, text: str):
+        """
+        Synthesize and play audio.
+
+        Args:
+            text: Text to speak
+        """
+        audio = await self.synthesize(text)
+
+        if audio is None:
+            return
+
+        try:
+            # Play audio using sounddevice
+            await asyncio.to_thread(
+                sd.play,
+                audio,
+                samplerate=24000,  # Kokoro default sample rate
+                blocking=True,
+            )
+        except Exception as e:
+            LOGGER.error(f"Audio playback failed: {e}")
+
+    async def speak_streaming(self, sentences: list[str]):
+        """
+        Speak multiple sentences with streaming generation.
+
+        Starts playing the first sentence while generating the rest.
+
+        Args:
+            sentences: List of sentences to speak
+        """
+        if not self.config.enabled or not sentences:
+            return
+
+        # Generate and play first sentence immediately
+        if sentences:
+            first_audio = await self.synthesize(sentences[0])
+            if first_audio is not None:
+                # Start playing first sentence
+                play_task = asyncio.create_task(
+                    asyncio.to_thread(
+                        sd.play,
+                        first_audio,
+                        samplerate=24000,
+                        blocking=True,
+                    )
+                )
+
+        # Generate remaining sentences while first plays
+        remaining_audios = []
+        if len(sentences) > 1:
+            for sentence in sentences[1:]:
+                audio = await self.synthesize(sentence)
+                if audio is not None:
+                    remaining_audios.append(audio)
+
+        # Wait for first sentence to finish
+        if 'play_task' in locals():
+            await play_task
+
+        # Play remaining sentences
+        for audio in remaining_audios:
+            try:
+                await asyncio.to_thread(
+                    sd.play,
+                    audio,
+                    samplerate=24000,
+                    blocking=True,
+                )
+            except Exception as e:
+                LOGGER.error(f"Audio playback failed: {e}")
+                break
+
+    def set_voice(self, voice: str) -> bool:
+        """
+        Change voice and reload model.
+
+        Args:
+            voice: Voice name (e.g., "af_sarah", "af_bella")
+
+        Returns:
+            True if voice changed successfully
+        """
+        if voice not in VoiceConfig.FEMALE_VOICES:
+            LOGGER.warning(f"Invalid voice: {voice}. Available: {VoiceConfig.FEMALE_VOICES}")
+            return False
+
+        self.config.voice = voice
+        self._initialized = False  # Force reload on next use
+        LOGGER.info(f"Voice changed to: {voice}")
+        return True
+
+    def set_speed(self, speed: float):
+        """Set speech speed multiplier (0.5 = slow, 2.0 = fast)."""
+        self.config.speed = max(0.5, min(2.0, speed))
+        LOGGER.info(f"Speech speed set to: {self.config.speed}x")
+
+    def enable(self):
+        """Enable TTS output."""
+        self.config.enabled = True
+        LOGGER.info("TTS enabled")
+
+    def disable(self):
+        """Disable TTS output."""
+        self.config.enabled = False
+        LOGGER.info("TTS disabled")
+
+    def toggle(self) -> bool:
+        """Toggle TTS on/off. Returns new state."""
+        self.config.enabled = not self.config.enabled
+        LOGGER.info(f"TTS {'enabled' if self.config.enabled else 'disabled'}")
+        return self.config.enabled
