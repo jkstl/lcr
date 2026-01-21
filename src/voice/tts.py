@@ -121,7 +121,27 @@ class TTSEngine:
             LOGGER.error(f"Failed to initialize Kokoro TTS: {e}")
             raise
 
-    async def synthesize(self, text: str) -> Optional[np.ndarray]:
+    def _normalize_audio_output(self, audio_output) -> Optional[tuple[np.ndarray, int]]:
+        """Normalize Kokoro output to (audio, sample_rate)."""
+        if audio_output is None:
+            return None
+
+        sample_rate = 24000
+        audio = audio_output
+
+        if isinstance(audio_output, (tuple, list)) and len(audio_output) == 2:
+            candidate_audio, candidate_rate = audio_output
+            if isinstance(candidate_rate, (int, float)):
+                audio = candidate_audio
+                sample_rate = int(candidate_rate)
+
+        audio = np.asarray(audio, dtype=np.float32)
+        if audio.ndim == 0:
+            return None
+
+        return audio, sample_rate
+
+    async def synthesize(self, text: str) -> Optional[tuple[np.ndarray, int]]:
         """
         Synthesize text to audio.
 
@@ -129,7 +149,7 @@ class TTSEngine:
             text: Text to convert to speech
 
         Returns:
-            Audio array (numpy) or None if disabled/failed
+            Audio array and sample rate or None if disabled/failed
         """
         if not self.config.enabled:
             return None
@@ -152,7 +172,7 @@ class TTSEngine:
                 "en-us",
             )
 
-            return audio
+            return self._normalize_audio_output(audio)
 
         except Exception as e:
             LOGGER.error(f"TTS synthesis failed: {e}")
@@ -165,17 +185,18 @@ class TTSEngine:
         Args:
             text: Text to speak
         """
-        audio = await self.synthesize(text)
+        result = await self.synthesize(text)
 
-        if audio is None:
+        if result is None:
             return
 
         try:
+            audio, sample_rate = result
             # Play audio using sounddevice
             await asyncio.to_thread(
                 sd.play,
                 audio,
-                samplerate=24000,  # Kokoro default sample rate
+                samplerate=sample_rate,
                 blocking=True,
             )
         except Exception as e:
@@ -193,44 +214,49 @@ class TTSEngine:
         if not self.config.enabled or not sentences:
             return
 
-        # Generate and play first sentence immediately
-        if sentences:
-            first_audio = await self.synthesize(sentences[0])
-            if first_audio is not None:
-                # Start playing first sentence
-                play_task = asyncio.create_task(
-                    asyncio.to_thread(
-                        sd.play,
-                        first_audio,
-                        samplerate=24000,
-                        blocking=True,
+        try:
+            # Generate and play first sentence immediately
+            if sentences:
+                first_result = await self.synthesize(sentences[0])
+                if first_result is not None:
+                    first_audio, first_sample_rate = first_result
+                    # Start playing first sentence
+                    play_task = asyncio.create_task(
+                        asyncio.to_thread(
+                            sd.play,
+                            first_audio,
+                            samplerate=first_sample_rate,
+                            blocking=True,
+                        )
                     )
-                )
 
         # Generate remaining sentences while first plays
-        remaining_audios = []
-        if len(sentences) > 1:
-            for sentence in sentences[1:]:
-                audio = await self.synthesize(sentence)
-                if audio is not None:
-                    remaining_audios.append(audio)
+            remaining_audios = []
+            if len(sentences) > 1:
+                for sentence in sentences[1:]:
+                    result = await self.synthesize(sentence)
+                    if result is not None:
+                        remaining_audios.append(result)
 
         # Wait for first sentence to finish
-        if 'play_task' in locals():
-            await play_task
+            if 'play_task' in locals():
+                await play_task
 
         # Play remaining sentences
-        for audio in remaining_audios:
-            try:
-                await asyncio.to_thread(
-                    sd.play,
-                    audio,
-                    samplerate=24000,
-                    blocking=True,
-                )
-            except Exception as e:
-                LOGGER.error(f"Audio playback failed: {e}")
-                break
+            for audio, sample_rate in remaining_audios:
+                try:
+                    await asyncio.to_thread(
+                        sd.play,
+                        audio,
+                        samplerate=sample_rate,
+                        blocking=True,
+                    )
+                except Exception as e:
+                    LOGGER.error(f"Audio playback failed: {e}")
+                    break
+        except asyncio.CancelledError:
+            sd.stop()
+            raise
 
     def set_voice(self, voice: str) -> bool:
         """

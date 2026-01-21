@@ -404,6 +404,8 @@ async def run_chat():
 
     console.print(f"[dim]Conversation ID: {conversation_id}[/dim]\n")
 
+    tts_task: asyncio.Task | None = None
+
     # Chat loop
     while True:
         try:
@@ -460,6 +462,8 @@ async def run_chat():
         if user_input.lower() == "/voice":
             enabled = tts_engine.toggle()
             console.print(f"[cyan]🔊 TTS {'enabled' if enabled else 'disabled'}[/cyan]")
+            if not enabled and tts_task and not tts_task.done():
+                tts_task.cancel()
             continue
 
         if user_input.lower() == "/voices":
@@ -512,8 +516,10 @@ async def run_chat():
             if tts_engine.config.enabled:
                 sentences = split_into_sentences(full_response.strip())
                 if sentences:
+                    if tts_task and not tts_task.done():
+                        tts_task.cancel()
                     # Play TTS in background task so user can continue typing
-                    asyncio.create_task(tts_engine.speak_streaming(sentences))
+                    tts_task = asyncio.create_task(tts_engine.speak_streaming(sentences))
 
         except Exception as e:
             console.print(f"\n[red]✗ Error:[/red] {e}\n")
