@@ -9,6 +9,9 @@ data/
 .env
 .DS_Store
 
+# Claude Code session files
+.claude/
+
 # Session documentation (temporary notes)
 CHANGES_SUMMARY.md
 EXTRACTION_FIX.md
@@ -16,6 +19,10 @@ OBSERVER_FIX.md
 VERIFICATION_GUIDE.md
 MAIN_UI_UPDATE.md
 SESSION_COMPLETE.md
+memory_analysis.txt
+review_chat.txt
+*_analysis.txt
+*_chat.txt
 
 # Temporary test files (root level)
 test_*.py
