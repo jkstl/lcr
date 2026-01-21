@@ -4,14 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
+import urllib.request
 
 import numpy as np
 import sounddevice as sd
-import soundfile as sf
 
 LOGGER = logging.getLogger(__name__)
 
@@ -20,20 +19,24 @@ LOGGER = logging.getLogger(__name__)
 class VoiceConfig:
     """Configuration for TTS voice."""
 
-    voice: str = "af_sarah"  # Default female voice
+    voice: str = "af_heart"  # Default female voice (highest quality)
     speed: float = 1.0
     enabled: bool = False
 
-    # Available Kokoro female voices
+    # Available Kokoro female voices (American English)
+    # Source: https://huggingface.co/hexgrad/Kokoro-82M/blob/main/VOICES.md
     FEMALE_VOICES = [
-        "af_sarah",   # Natural, warm
-        "af_bella",   # Clear, professional
-        "af_sky",     # Bright, friendly
-        "af_nova",    # Smooth, calm
-        "af_nicole",  # Expressive
-        "af_alloy",   # Balanced
-        "af_heart",   # Gentle
-        "af_river",   # Dynamic
+        "af_heart",    # A grade - Highest quality
+        "af_bella",    # A- grade - Clear, professional
+        "af_nicole",   # B- grade - Expressive
+        "af_sarah",    # C+ grade - Natural
+        "af_aoede",    # C+ grade
+        "af_kore",     # C+ grade
+        "af_nova",     # C grade
+        "af_alloy",    # C grade
+        "af_sky",      # C- grade - Bright
+        "af_jessica",  # D grade
+        "af_river",    # D grade
     ]
 
 
@@ -48,10 +51,44 @@ class TTSEngine:
     - Sentence-by-sentence streaming
     """
 
+    # Model file URLs
+    MODEL_URL = "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx"
+    VOICES_URL = "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin"
+
     def __init__(self, config: Optional[VoiceConfig] = None):
         self.config = config or VoiceConfig()
         self._model = None
         self._initialized = False
+        self._model_dir = Path("./data/models/kokoro")
+
+    def _download_models(self):
+        """Download Kokoro model files if they don't exist."""
+        self._model_dir.mkdir(parents=True, exist_ok=True)
+
+        model_path = self._model_dir / "kokoro-v1.0.onnx"
+        voices_path = self._model_dir / "voices-v1.0.bin"
+
+        # Download model if missing
+        if not model_path.exists():
+            LOGGER.info("Downloading Kokoro TTS model (~100MB)...")
+            try:
+                urllib.request.urlretrieve(self.MODEL_URL, model_path)
+                LOGGER.info(f"✓ Model downloaded to {model_path}")
+            except Exception as e:
+                LOGGER.error(f"Failed to download model: {e}")
+                raise
+
+        # Download voices if missing
+        if not voices_path.exists():
+            LOGGER.info("Downloading Kokoro voice embeddings...")
+            try:
+                urllib.request.urlretrieve(self.VOICES_URL, voices_path)
+                LOGGER.info(f"✓ Voices downloaded to {voices_path}")
+            except Exception as e:
+                LOGGER.error(f"Failed to download voices: {e}")
+                raise
+
+        return str(model_path), str(voices_path)
 
     def _lazy_load(self):
         """Lazy load Kokoro model on first use to save startup time."""
@@ -60,14 +97,17 @@ class TTSEngine:
 
         try:
             # Import here to avoid loading if TTS is disabled
-            from kokoro import KPipeline
+            from kokoro_onnx import Kokoro
 
             LOGGER.info(f"Loading Kokoro TTS model with voice: {self.config.voice}")
 
-            # Initialize Kokoro pipeline
-            self._model = KPipeline(
-                lang_code="en-us",
-                voice=self.config.voice,
+            # Download models if needed
+            model_path, voices_path = self._download_models()
+
+            # Initialize Kokoro
+            self._model = Kokoro(
+                model_path=model_path,
+                voices_path=voices_path,
             )
 
             self._initialized = True
@@ -103,10 +143,13 @@ class TTSEngine:
                 await asyncio.to_thread(self._lazy_load)
 
             # Generate audio in thread pool (blocking operation)
+            # kokoro_onnx API: create(text, voice, speed, lang)
             audio = await asyncio.to_thread(
-                self._model.generate,
+                self._model.create,
                 text,
-                speed=self.config.speed,
+                self.config.voice,
+                self.config.speed,
+                "en-us",
             )
 
             return audio
