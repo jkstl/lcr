@@ -409,7 +409,10 @@ async def run_chat():
     # Chat loop
     while True:
         try:
-            user_input = console.input("[bold cyan]You:[/bold cyan] ").strip()
+            # Run input in thread pool so event loop can handle background tasks (TTS)
+            user_input = await asyncio.to_thread(
+                lambda: console.input("[bold cyan]You:[/bold cyan] ").strip()
+            )
         except (KeyboardInterrupt, EOFError):
             console.print("\n[yellow]Interrupted. Saving memories...[/yellow]")
             logger.end_conversation()
