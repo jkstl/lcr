@@ -15,11 +15,12 @@ Rules:
   * Technical details, architectures, or tools the user works with
   * User's skills, expertise, or professional background
   * Significant personal information or life events
+  * **Emotional content, feelings, or personal struggles** (depression, sadness, missing someone)
 
 Examples:
 
 Example 1 - HIGH (project description):
-USER: I'm working on three projects: 1. LCR (AI system with dual-memory), 
+USER: I'm working on three projects: 1. LCR (AI system with dual-memory),
       2. Tenant Shield (lease analysis), 3. Email Parser Pro (Cloudflare Workers app)
 ASSISTANT: These sound fascinating!
 → HIGH (detailed information about user's projects and technical work)
@@ -29,22 +30,27 @@ USER: My app uses React Native for the frontend and FastAPI for the backend
 ASSISTANT: That's a solid tech stack!
 → HIGH (concrete technical facts about user's work)
 
-Example 3 - MEDIUM (preference):
+Example 3 - HIGH (emotional content):
+USER: I've been thinking about Giana a lot lately and it's making me sad
+ASSISTANT: I'm sorry to hear that.
+→ HIGH (significant emotional content about relationships and feelings)
+
+Example 4 - MEDIUM (preference):
 USER: I prefer Python over JavaScript
 ASSISTANT: That's common for backend work
 → MEDIUM (opinion/preference)
 
-Example 4 - LOW (vague interest):
+Example 5 - LOW (vague interest):
 USER: Tell me more about that
 ASSISTANT: Sure, what would you like to know?
 → LOW (no new information shared)
 
-Example 5 - DISCARD (pure greeting):
+Example 6 - DISCARD (pure greeting):
 USER: thanks
 ASSISTANT: You're welcome!
 → DISCARD (no content)
 
-IMPORTANT: When in doubt, err on the side of HIGH rather than DISCARD. 
+IMPORTANT: When in doubt, err on the side of HIGH rather than DISCARD.
 It's better to store too much than to lose important information.
 
 Respond with exactly one word: DISCARD, LOW, MEDIUM, or HIGH
@@ -76,24 +82,43 @@ Instructions:
    - For dates/birthdays: use "birthday", "birthdate", or "born_on" keys
    - For ages: use "age" key
    - For temporal info in relationships: use metadata field
+
 3. Identify relationships between entities using these types:
    - Identity: HAS_NAME, NICKNAME, GOES_BY (for user's name or preferred name)
    - Familial: SIBLING_OF, PARENT_OF, CHILD_OF, SPOUSE_OF, etc.
    - Social: FRIEND_OF, DATING, MARRIED_TO, BROKE_UP_WITH, etc.
    - Professional: WORKS_AT, MANAGES, COLLEAGUE_OF, etc.
    - Projects: WORKS_ON, DEVELOPING, MAINTAINING, CREATED (for personal/hobby projects)
-   - Spatial: LIVES_IN, VISITING, TRAVELING_TO, TRAVELING_FROM, etc.
+   - Spatial (ONGOING states): LIVES_IN, VISITING, STAYING_AT, TRAVELING_TO
+   - Spatial (COMPLETED states): RETURNED_HOME, LEFT, DEPARTED, ARRIVED_AT, VISITED, MOVED_TO
    - Ownership: OWNS, HAS, etc.
-   - Emotional: FEELS_ABOUT, PREFERS, DISLIKES, etc.
-4. When extracting statements from the user, the subject should be "User"
-5. Extract concrete facts only - do not infer or hallucinate
-6. CLASSIFY THE FACT TYPE:
-   - "core": User's name, work schedules, recurring routines, family relationships, home address, 
+   - Emotional: FEELS_ABOUT, PREFERS, DISLIKES, MISSES, etc.
+
+4. CRITICAL - ENTITY ATTRIBUTION (pay close attention):
+   - Use "User" ONLY when extracting facts about the user themselves ("I work at...", "I prefer...")
+   - When the user mentions OTHER PEOPLE by name, use THEIR NAME as the subject, NOT "User"
+   - Examples:
+     * "My sister Justine lives in Boston" → subject="Justine" (NOT "User")
+     * "Mom went home to Massachusetts" → subject="Mom" (NOT "User")
+     * "I work at Google" → subject="User" (correct, user talking about themselves)
+
+5. CRITICAL - TEMPORAL STATES (pay close attention):
+   - "left and went home" = RETURNED_HOME or LEFT (completed state, NOT VISITING)
+   - "was visiting, now back home" = RETURNED_HOME (completed state)
+   - "arrived at" = ARRIVED_AT (completed state)
+   - "scheduled for Friday" = SCHEDULED_FOR (future state)
+   - "already happened" = HAPPENED (completed state)
+   - "is visiting" / "currently at" = VISITING (ongoing state)
+
+6. Extract concrete facts only - do not infer or hallucinate
+
+7. CLASSIFY THE FACT TYPE:
+   - "core": User's name, work schedules, recurring routines, family relationships, home address,
              technology/devices owned, persistent life facts
    - "preference": Opinions, likes/dislikes, feelings, preferences
-   - "episodic": One-time events, plans, meetings, trips
+   - "episodic": One-time events, plans, meetings, trips, state changes
 
-Output valid JSON:
+Output valid JSON (MUST use "predicate" not "relation"):
 {{
     "fact_type": "core|preference|episodic",
     "entities": [
@@ -104,7 +129,7 @@ Output valid JSON:
     ]
 }}
 
-Example 1 (core fact - work schedule):
+Example 1 (User's work - subject is "User"):
 USER: I work at TechCorp from 9 to 5 on weekdays.
 ASSISTANT: Got it!
 
@@ -120,23 +145,44 @@ Would extract:
     ]
 }}
 
-Example 2 (episodic - one-time event):
-USER: I'm meeting Sarah for coffee tomorrow at 3pm.
-ASSISTANT: Sounds fun!
+Example 2 (Family member's location - subject is the family member, NOT User):
+USER: My sister Justine lives in Worcester Massachusetts.
+ASSISTANT: That's nice!
+
+Would extract:
+{{
+    "fact_type": "core",
+    "entities": [
+        {{"name": "User", "type": "Person", "attributes": {{}}}},
+        {{"name": "Justine", "type": "Person", "attributes": {{"relationship": "sister"}}}},
+        {{"name": "Worcester Massachusetts", "type": "Place", "attributes": {{}}}}
+    ],
+    "relationships": [
+        {{"subject": "User", "predicate": "SIBLING_OF", "object": "Justine", "metadata": {{}}}},
+        {{"subject": "Justine", "predicate": "LIVES_IN", "object": "Worcester Massachusetts", "metadata": {{}}}}
+    ]
+}}
+
+Example 3 (Temporal state - completed action "left and went home"):
+USER: My mom and sister Justine left yesterday and went back home to Massachusetts.
+ASSISTANT: Safe travels!
 
 Would extract:
 {{
     "fact_type": "episodic",
     "entities": [
-        {{"name": "User", "type": "Person", "attributes": {{}}}},
-        {{"name": "Sarah", "type": "Person", "attributes": {{}}}}
+        {{"name": "Mom", "type": "Person", "attributes": {{}}}},
+        {{"name": "Justine", "type": "Person", "attributes": {{"relationship": "sister"}}}},
+        {{"name": "Massachusetts", "type": "Place", "attributes": {{}}}}
     ],
     "relationships": [
-        {{"subject": "User", "predicate": "MEETING_WITH", "object": "Sarah", "metadata": {{"time": "3pm", "when": "tomorrow"}}}}
+        {{"subject": "User", "predicate": "SIBLING_OF", "object": "Justine", "metadata": {{}}}},
+        {{"subject": "Mom", "predicate": "RETURNED_HOME", "object": "Massachusetts", "metadata": {{"when": "yesterday"}}}},
+        {{"subject": "Justine", "predicate": "RETURNED_HOME", "object": "Massachusetts", "metadata": {{"when": "yesterday"}}}}
     ]
 }}
 
-Example 3 (preference):
+Example 4 (User's preference - subject is "User"):
 USER: I prefer Python over JavaScript for backend work.
 ASSISTANT: That's a popular choice!
 
@@ -153,17 +199,38 @@ Would extract:
     ]
 }}
 
-Example 4 (core fact - birthday with date and age):
-USER: Today is my birthday, January 20th. I turned 38 today.
-ASSISTANT: Happy birthday!
+Example 5 (Temporal state - ongoing visit):
+USER: My mom is visiting me in Philadelphia this week.
+ASSISTANT: Enjoy your time together!
 
 Would extract:
 {{
-    "fact_type": "core",
+    "fact_type": "episodic",
     "entities": [
-        {{"name": "User", "type": "Person", "attributes": {{"birthday": "January 20", "age": 38}}}}
+        {{"name": "User", "type": "Person", "attributes": {{}}}},
+        {{"name": "Mom", "type": "Person", "attributes": {{}}}},
+        {{"name": "Philadelphia", "type": "Place", "attributes": {{}}}}
     ],
-    "relationships": []
+    "relationships": [
+        {{"subject": "Mom", "predicate": "VISITING", "object": "Philadelphia", "metadata": {{"when": "this week"}}}}
+    ]
+}}
+
+Example 6 (Emotional content - subject is "User"):
+USER: I've been thinking about Giana a lot lately and it makes me sad.
+ASSISTANT: I'm sorry to hear that.
+
+Would extract:
+{{
+    "fact_type": "preference",
+    "entities": [
+        {{"name": "User", "type": "Person", "attributes": {{}}}},
+        {{"name": "Giana", "type": "Person", "attributes": {{}}}}
+    ],
+    "relationships": [
+        {{"subject": "User", "predicate": "MISSES", "object": "Giana", "metadata": {{"frequency": "lately"}}}},
+        {{"subject": "User", "predicate": "FEELS_ABOUT", "object": "Giana", "metadata": {{"emotion": "sad"}}}}
+    ]
 }}
 
 Now extract from the TURN above:"""
@@ -258,4 +325,3 @@ Output:
 }}
 
 Now analyze the relationships above:"""
-
