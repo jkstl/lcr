@@ -140,17 +140,19 @@ class Observer:
 
         contradictions = await self._check_contradictions(relationships)
 
-        await self._persist_to_vector_store(
-            combined_input,
-            summary,
-            queries,
-            conversation_id,
-            turn_index,
-            utility_grade,
-            fact_type,
+        # Persist to both stores in parallel for better performance
+        await asyncio.gather(
+            self._persist_to_vector_store(
+                combined_input,
+                summary,
+                queries,
+                conversation_id,
+                turn_index,
+                utility_grade,
+                fact_type,
+            ),
+            self._persist_to_graph_store(entities, relationships, contradictions),
         )
-
-        await self._persist_to_graph_store(entities, relationships, contradictions)
 
         return ObserverOutput(
             utility_grade=utility_grade,

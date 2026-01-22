@@ -206,7 +206,8 @@ class TTSEngine:
         """
         Speak multiple sentences with streaming generation.
 
-        Starts playing the first sentence while generating the rest.
+        Starts playing the first sentence while synthesizing the rest in parallel.
+        This prevents audio gaps between sentences.
 
         Args:
             sentences: List of sentences to speak
@@ -230,19 +231,26 @@ class TTSEngine:
                         )
                     )
 
-        # Generate remaining sentences while first plays
+            # Synthesize all remaining sentences in parallel while first plays
             remaining_audios = []
             if len(sentences) > 1:
-                for sentence in sentences[1:]:
-                    result = await self.synthesize(sentence)
-                    if result is not None:
+                synthesis_tasks = [
+                    self.synthesize(sentence) for sentence in sentences[1:]
+                ]
+                results = await asyncio.gather(*synthesis_tasks, return_exceptions=True)
+
+                # Filter out failures and exceptions
+                for result in results:
+                    if isinstance(result, Exception):
+                        LOGGER.error(f"TTS synthesis failed: {result}")
+                    elif result is not None:
                         remaining_audios.append(result)
 
-        # Wait for first sentence to finish
+            # Wait for first sentence to finish
             if 'play_task' in locals():
                 await play_task
 
-        # Play remaining sentences
+            # Play remaining sentences (already synthesized, no gaps)
             for audio, sample_rate in remaining_audios:
                 try:
                     await asyncio.to_thread(
