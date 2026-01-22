@@ -256,6 +256,25 @@ Key settings in `src/config.py` (override via `.env` file):
 | `embedding_model` | nomic-embed-text:v1.5 | Embedding model (flexible versioning) |
 | `ollama_host` | http://localhost:11434 | Ollama API endpoint |
 
+**Testing Different Models:**
+
+```bash
+# Quick test: use environment variables
+OBSERVER_MODEL=qwen3:4b python -m src.main
+
+# Persistent: create .env file from .env.example
+cp .env.example .env
+# Edit .env to set your preferred models
+
+# Interactive testing tool
+python scripts/model_tester.py
+
+# See all options and current config
+python scripts/list_models.py
+```
+
+For detailed model testing guide, see [MODEL_TESTING.md](MODEL_TESTING.md).
+
 ### Memory Configuration
 
 | Setting | Default | Description |
