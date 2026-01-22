@@ -211,7 +211,8 @@ SET relation.metadata = $metadata,
 MATCH (subject {{name:$subject}}){pred}(object)
 RETURN subject.name AS subject, type(relation) AS predicate, object.name AS object,
        relation.metadata AS metadata, id(relation) AS rel_id, relation.created_at AS created_at,
-       relation.status AS status, relation.valid_until AS valid_until, relation.superseded_by AS superseded_by
+       relation.status AS status, relation.valid_until AS valid_until, relation.superseded_by AS superseded_by,
+       relation.source AS source, relation.confidence AS confidence
 """
         result = await self._run(self.graph.query, query, params={"subject": subject})
         return [self._row_to_relationship(row) for row in result.result_set]
@@ -223,7 +224,8 @@ MATCH (subject)-[relation]->(object)
 WHERE subject.name IN $names OR object.name IN $names
 RETURN subject.name AS subject, type(relation) AS predicate, object.name AS object,
        relation.metadata AS metadata, id(relation) AS rel_id, relation.created_at AS created_at,
-       relation.status AS status, relation.valid_until AS valid_until, relation.superseded_by AS superseded_by
+       relation.status AS status, relation.valid_until AS valid_until, relation.superseded_by AS superseded_by,
+       relation.source AS source, relation.confidence AS confidence
 ORDER BY relation.created_at DESC
 LIMIT $limit
 """
@@ -259,6 +261,10 @@ SET relation.still_valid = false,
         valid_until = _parse_datetime(row[7]) if len(row) > 7 and row[7] and row[7] != "null" else None
         superseded_by = row[8] if len(row) > 8 and row[8] and row[8] != "null" else None
 
+        # Parse source tracking fields (indices 9, 10)
+        source = row[9] if len(row) > 9 and row[9] else "user_stated"
+        confidence = float(row[10]) if len(row) > 10 and row[10] is not None else 1.0
+
         return GraphRelationship(
             id=str(row[4]),
             subject=str(row[0]),
@@ -269,6 +275,8 @@ SET relation.still_valid = false,
             status=status,
             valid_until=valid_until,
             superseded_by=superseded_by,
+            source=source,
+            confidence=confidence,
         )
 
     async def _run(self, func, *args, **kwargs):
