@@ -204,10 +204,11 @@ class TTSEngine:
 
     async def speak_streaming(self, sentences: list[str]):
         """
-        Speak multiple sentences with streaming generation.
+        Speak multiple sentences with pipelined synthesis.
 
-        Starts playing the first sentence while synthesizing the rest in parallel.
-        This prevents audio gaps between sentences.
+        Uses a 1-sentence lookahead: synthesizes the next sentence while the
+        current one plays. This eliminates audio gaps without overwhelming
+        the TTS model with concurrent requests.
 
         Args:
             sentences: List of sentences to speak
@@ -216,52 +217,43 @@ class TTSEngine:
             return
 
         try:
-            # Generate and play first sentence immediately
-            if sentences:
-                first_result = await self.synthesize(sentences[0])
-                if first_result is not None:
-                    first_audio, first_sample_rate = first_result
-                    # Start playing first sentence
-                    play_task = asyncio.create_task(
-                        asyncio.to_thread(
-                            sd.play,
-                            first_audio,
-                            samplerate=first_sample_rate,
-                            blocking=True,
-                        )
+            # Start by synthesizing the first sentence
+            next_audio_task = asyncio.create_task(self.synthesize(sentences[0]))
+
+            for i in range(len(sentences)):
+                # Wait for current sentence synthesis to complete
+                try:
+                    current_result = await next_audio_task
+                except Exception as e:
+                    LOGGER.error(f"TTS synthesis failed: {e}")
+                    continue
+
+                if current_result is None:
+                    continue
+
+                current_audio, current_sample_rate = current_result
+
+                # Start synthesizing next sentence while current one plays
+                if i + 1 < len(sentences):
+                    next_audio_task = asyncio.create_task(
+                        self.synthesize(sentences[i + 1])
                     )
 
-            # Synthesize all remaining sentences in parallel while first plays
-            remaining_audios = []
-            if len(sentences) > 1:
-                synthesis_tasks = [
-                    self.synthesize(sentence) for sentence in sentences[1:]
-                ]
-                results = await asyncio.gather(*synthesis_tasks, return_exceptions=True)
-
-                # Filter out failures and exceptions
-                for result in results:
-                    if isinstance(result, Exception):
-                        LOGGER.error(f"TTS synthesis failed: {result}")
-                    elif result is not None:
-                        remaining_audios.append(result)
-
-            # Wait for first sentence to finish
-            if 'play_task' in locals():
-                await play_task
-
-            # Play remaining sentences (already synthesized, no gaps)
-            for audio, sample_rate in remaining_audios:
+                # Play current sentence (blocks until done)
                 try:
                     await asyncio.to_thread(
                         sd.play,
-                        audio,
-                        samplerate=sample_rate,
+                        current_audio,
+                        samplerate=current_sample_rate,
                         blocking=True,
                     )
                 except Exception as e:
                     LOGGER.error(f"Audio playback failed: {e}")
+                    # Cancel pending synthesis if playback fails
+                    if i + 1 < len(sentences) and next_audio_task:
+                        next_audio_task.cancel()
                     break
+
         except asyncio.CancelledError:
             sd.stop()
             raise
