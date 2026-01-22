@@ -129,9 +129,11 @@ class InMemoryGraphStore(GraphStore):
                 break
         return found
 
-    async def mark_contradiction(self, existing_id: str, superseded_by: str) -> None:
+    async def mark_contradiction(self, existing_id: str | int, superseded_by: str) -> None:
+        # Handle both string and int IDs
+        existing_id_str = str(existing_id)
         for rel in self.relationships:
-            if rel.id == existing_id:
+            if str(rel.id) == existing_id_str:
                 rel.metadata["still_valid"] = False
                 rel.metadata["superseded_at"] = datetime.utcnow()
                 rel.superseded_by = superseded_by
@@ -232,7 +234,11 @@ LIMIT $limit
         result = await self._run(self.graph.query, query, params={"names": names, "limit": limit})
         return [self._row_to_relationship(row) for row in result.result_set]
 
-    async def mark_contradiction(self, existing_id: str, superseded_by: str) -> None:
+    async def mark_contradiction(self, existing_id: str | int, superseded_by: str) -> None:
+        # FalkorDB expects integer IDs
+        if isinstance(existing_id, str):
+            existing_id = int(existing_id) if existing_id.isdigit() else existing_id
+
         current_ts = datetime.utcnow().isoformat()
         query = """
 MATCH ()-[relation]->()

@@ -231,8 +231,13 @@ class Observer:
                     })
 
                     # Mark the old fact as superseded
+                    # Convert ID to int for FalkorDB (string IDs don't match)
+                    existing_id = contradiction["existing_id"]
+                    if isinstance(existing_id, str) and existing_id.isdigit():
+                        existing_id = int(existing_id)
+
                     await self.graph_store.mark_contradiction(
-                        contradiction["existing_id"],
+                        existing_id,
                         f"{rel['subject']} {rel['predicate']} {rel['object']}"
                     )
 
