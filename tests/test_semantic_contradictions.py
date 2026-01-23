@@ -53,6 +53,7 @@ async def context_assembler(vector_table, graph_store):
 class TestTemporalStateTransitions:
     """Test temporal state transitions like VISITING → RETURNED_HOME."""
 
+    @pytest.mark.integration  # Requires live Ollama
     @pytest.mark.asyncio
     async def test_visiting_to_returned_home_marks_contradiction(self, observer, graph_store):
         """
@@ -91,6 +92,7 @@ class TestTemporalStateTransitions:
                     assert rel.superseded_by is not None, "Old VISITING fact should be marked as superseded"
                     assert rel.status == "completed", "Old VISITING fact should have status=completed"
 
+    @pytest.mark.integration  # Requires live Ollama
     @pytest.mark.asyncio
     async def test_scheduled_to_happened_marks_contradiction(self, observer, graph_store):
         """
@@ -116,6 +118,7 @@ class TestTemporalStateTransitions:
         # Should detect contradiction
         assert len(result.contradictions) > 0, "Should detect SCHEDULED vs HAPPENED contradiction"
 
+    @pytest.mark.integration  # Requires live Ollama
     @pytest.mark.asyncio
     async def test_age_correction_marks_contradiction(self, observer, graph_store):
         """
