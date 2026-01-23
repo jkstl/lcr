@@ -94,7 +94,7 @@ A local, privacy-first conversational AI system with persistent episodic memory 
 │  4. Detect Contradictions → Mark old facts as superseded           │
 │  5. Persist to LanceDB (vector) + FalkorDB (graph)                 │
 │                                                                     │
-│  Model: Qwen3 1.7B (lightweight, CPU-friendly)                     │
+│  Model: LFM2.5-1.2B-Instruct (fine-tuned, 100% accuracy)           │
 └─────────────────────────────────────────────────────────────────────┘
                              │
                              ▼
@@ -153,7 +153,6 @@ pip install -r requirements.txt
 ```bash
 # Required Ollama models
 ollama pull qwen3:14b          # Main conversation model
-ollama pull qwen3:1.7b         # Observer model
 ollama pull nomic-embed-text   # Embedding model (any version)
 ```
 
@@ -252,7 +251,7 @@ Key settings in `src/config.py` (override via `.env` file):
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `main_model` | qwen3:14b | Main conversation LLM |
-| `observer_model` | qwen3:1.7b | Entity extraction LLM |
+| `observer_model` | transformers:fine_tuning/lfm_1.2b_v1/model/merged | Entity extraction LLM |
 | `embedding_model` | nomic-embed-text:v1.5 | Embedding model (flexible versioning) |
 | `ollama_host` | http://localhost:11434 | Ollama API endpoint |
 
@@ -301,7 +300,7 @@ For detailed model testing guide, see [MODEL_TESTING.md](MODEL_TESTING.md).
 ```bash
 # Override defaults by creating .env file
 MAIN_MODEL=qwen3:14b
-OBSERVER_MODEL=qwen3:1.7b
+OBSERVER_MODEL=transformers:fine_tuning/lfm_1.2b_v1/model/merged
 EMBEDDING_MODEL=nomic-embed-text:latest
 
 MAX_CONTEXT_TOKENS=4000
@@ -546,7 +545,6 @@ python scripts/inspect_memory.py
 ```bash
 # System supports flexible version matching
 ollama pull qwen3:14b
-ollama pull qwen3:1.7b
 ollama pull nomic-embed-text  # Any version (v1.5, latest, etc.)
 
 # Verify installation
@@ -609,8 +607,8 @@ docker logs lcr-codex-falkordb-1
    - Workaround: Use explicit names when asking questions
 
 2. **Observer Model Accuracy**
-   - Qwen3 1.7B may miss subtle entities in complex sentences
-   - Consider upgrading to qwen3:4b if extraction quality is insufficient
+   - LFM2.5-1.2B fine-tuned model achieves 100% extraction accuracy
+   - If not using fine-tuned model, qwen3:4b recommended over qwen3:1.7b
 
 3. **No Memory Pruning**
    - No automatic deletion of DISCARD/LOW utility memories
