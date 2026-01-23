@@ -1,6 +1,6 @@
 # Local Cognitive RAG (LCR)
 
-**Version 1.2.0**
+**Version 1.4.0**
 
 
 A local, privacy-first conversational AI system with persistent episodic memory and natural voice output. LCR runs entirely offline—no external API calls, no cloud dependencies—while maintaining rich contextual awareness across sessions through a dual-memory architecture combining semantic vector search with a structured knowledge graph.
@@ -106,7 +106,7 @@ A local, privacy-first conversational AI system with persistent episodic memory 
 | Component | Technology | Purpose |
 |-----------|------------|---------|
 | **Main LLM** | Qwen3 14B via Ollama | Conversation generation |
-| **Observer LLM** | Qwen3 1.7B (CPU) | Entity/relationship extraction |
+| **Observer LLM** | LFM2.5-1.2B-Instruct (fine-tuned, 100% accuracy) | Entity/relationship extraction |
 | **Embeddings** | nomic-embed-text v1.5 | Semantic vector generation |
 | **Reranker** | all-MiniLM-L6-v2 | Cross-encoder relevance scoring |
 | **Vector Store** | LanceDB | Semantic memory storage |
