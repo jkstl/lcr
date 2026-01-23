@@ -194,7 +194,7 @@ async def run_interactive_tests():
     utility_tests = [
         {
             "text": "User: I've been thinking about Giana a lot lately and it's making me sad\nAssistant: I'm sorry to hear that.",
-            "expected_utility": "HIGH",
+            "expected_utility": "IMPORTANT",
         },
         {
             "text": "User: thanks\nAssistant: You're welcome!",
@@ -202,7 +202,7 @@ async def run_interactive_tests():
         },
         {
             "text": "User: I prefer Python over JavaScript\nAssistant: That's common for backend work",
-            "expected_utility": "MEDIUM",
+            "expected_utility": "STORE",
         },
     ]
 
