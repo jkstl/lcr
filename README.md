@@ -13,11 +13,11 @@ A local, privacy-first conversational AI system with persistent episodic memory 
 - **Persistent Cross-Session Memory** — Remembers conversations, facts, and relationships indefinitely across restarts
 - **Natural Voice Output (NEW v1.2.0)** — High-quality TTS with multiple voices using Kokoro (82M parameters, ~210× real-time on GPU)
 - **Intelligent Fact Classification** — Automatically categorizes memories as core facts (never decay), episodic events (short-lived), or preferences (medium-lived)
-- **Tiered Memory Decay** — Core facts permanent; HIGH utility fades over 180 days; MEDIUM over 60 days; LOW over 14 days
+- **Tiered Memory Decay** — Core facts permanent; IMPORTANT utility never decay; STORE fades over 60 days; DISCARD not stored
 - **Semantic Contradiction Detection** — LLM-powered detection understands temporal state transitions (e.g., "visiting" → "returned home")
 - **Temporal State Tracking** — Tracks ongoing vs completed states, filters expired facts, boosts recent corrections
 - **Entity & Relationship Extraction** — Builds a rich knowledge graph from natural conversation
-- **Cross-Encoder Reranking** — Retrieves the most semantically relevant context using dual-stage search
+- **Bi-Encoder Reranking** — Retrieves the most semantically relevant context using dual-stage search with cosine similarity
 
 ### Voice I/O (v1.2.0+)
 - **Text-to-Speech (TTS)** — Kokoro TTS with 8 natural female voices (af_sarah, af_bella, af_sky, etc.)
@@ -84,7 +84,7 @@ A local, privacy-first conversational AI system with persistent episodic memory 
 ┌─────────────────────────────────────────────────────────────────────┐
 │                    OBSERVER (Async) - Optimized                     │
 │                                                                     │
-│  1. Grade Utility → DISCARD / LOW / MEDIUM / HIGH (gatekeeper)     │
+│  1. Grade Utility → DISCARD / STORE / IMPORTANT (3-level system)     │
 │  2. IF DISCARD → Early Exit (skip steps 3-6)                       │
 │  3. ELSE Parallel Processing:                                      │
 │     • Classify Fact Type → core / preference / episodic            │
@@ -108,7 +108,7 @@ A local, privacy-first conversational AI system with persistent episodic memory 
 | **Main LLM** | Qwen3 14B via Ollama | Conversation generation |
 | **Observer LLM** | LFM2.5-1.2B-Instruct (fine-tuned, 100% accuracy) | Entity/relationship extraction |
 | **Embeddings** | nomic-embed-text v1.5 | Semantic vector generation |
-| **Reranker** | all-MiniLM-L6-v2 | Cross-encoder relevance scoring |
+| **Reranker** | all-MiniLM-L6-v2 | Bi-encoder cosine similarity scoring |
 | **Vector Store** | LanceDB | Semantic memory storage |
 | **Knowledge Graph** | FalkorDB (Redis-based) | Entity/relationship storage |
 | **Orchestration** | LangGraph | State machine workflow |
@@ -339,7 +339,7 @@ It generates a contextually-aware response that integrates past conversations.
 
 ### 3. Observer (Async)
 After responding, the observer:
-1. **Grades** the turn's importance (DISCARD, LOW, MEDIUM, HIGH) - *runs first as gatekeeper*
+1. **Grades** the turn's importance (DISCARD, STORE, IMPORTANT) - *3-level simplified system*
 2. **Early exit** for DISCARD turns (skips remaining LLM calls)
 3. **Parallel processing** for non-DISCARD turns (optimized):
    - **Classifies** fact type (core, preference, episodic)

@@ -63,6 +63,11 @@ class GraphStore(ABC):
         ...
 
     @abstractmethod
+    async def query_by_object(self, obj: str, predicate: str | None = None) -> list[GraphRelationship]:
+        """Query relationships where the given entity appears as the object."""
+        ...
+
+    @abstractmethod
     async def search_relationships(self, entity_names: Iterable[str], limit: int = 10) -> list[GraphRelationship]:
         ...
 
@@ -108,6 +113,17 @@ class InMemoryGraphStore(GraphStore):
         matches: list[GraphRelationship] = []
         for rel in self.relationships:
             if rel.subject != subject:
+                continue
+            if predicate and rel.predicate != predicate:
+                continue
+            matches.append(rel)
+        return matches
+
+    async def query_by_object(self, obj: str, predicate: str | None = None) -> list[GraphRelationship]:
+        """Query relationships where the given entity appears as the object."""
+        matches: list[GraphRelationship] = []
+        for rel in self.relationships:
+            if rel.object != obj:
                 continue
             if predicate and rel.predicate != predicate:
                 continue
@@ -217,6 +233,19 @@ RETURN subject.name AS subject, type(relation) AS predicate, object.name AS obje
        relation.source AS source, relation.confidence AS confidence
 """
         result = await self._run(self.graph.query, query, params={"subject": subject})
+        return [self._row_to_relationship(row) for row in result.result_set]
+
+    async def query_by_object(self, obj: str, predicate: str | None = None) -> list[GraphRelationship]:
+        """Query relationships where the given entity appears as the object."""
+        pred = f"-[relation:{predicate}]->" if predicate else "-[relation]->"
+        query = f"""
+MATCH (subject){pred}(object {{name:$object}})
+RETURN subject.name AS subject, type(relation) AS predicate, object.name AS object,
+       relation.metadata AS metadata, id(relation) AS rel_id, relation.created_at AS created_at,
+       relation.status AS status, relation.valid_until AS valid_until, relation.superseded_by AS superseded_by,
+       relation.source AS source, relation.confidence AS confidence
+"""
+        result = await self._run(self.graph.query, query, params={"object": obj})
         return [self._row_to_relationship(row) for row in result.result_set]
 
     async def search_relationships(self, entity_names: Iterable[str], limit: int = 10) -> list[GraphRelationship]:

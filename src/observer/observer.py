@@ -195,10 +195,11 @@ class Observer:
         prompt = QUERIES_PROMPT.format(text=text)
         try:
             response = await retry_on_timeout(lambda: self.llm.generate(self.model, prompt))
-            data = loads(response)
+            # FIXED Issue #6: Use robust JSON parser for consistency
+            data = parse_json_response(response)
             if isinstance(data, list):
                 return [str(item) for item in data]
-        except JSONDecodeError:
+        except (JSONDecodeError, ValueError):
             ...
         return []
 
@@ -236,14 +237,24 @@ class Observer:
             for contradiction in semantic_contradictions:
                 # Only mark high-confidence contradictions
                 if contradiction.get("confidence") == "high":
-                    contradictions.append({
-                        "existing_fact_id": contradiction["existing_id"],
-                        "existing_statement": contradiction["existing_statement"],
-                        "new_statement": f"{rel['subject']} {rel['predicate']} {rel['object']}",
-                        "reason": contradiction["reason"],
-                        "temporal_type": contradiction.get("temporal_type"),
-                        "resolution_needed": True,
-                    })
+                    # Parse existing_statement to get structured data
+                    # Format should be "subject predicate object" from semantic contradiction prompt
+                    parts = contradiction["existing_statement"].split()
+                    if len(parts) >= 3:
+                        # For multi-word entities, we need a better approach
+                        # Store the full statement for logging, but also store structured fields
+                        contradictions.append({
+                            "existing_fact_id": contradiction["existing_id"],
+                            "existing_statement": contradiction["existing_statement"],
+                            "new_statement": f"{rel['subject']} {rel['predicate']} {rel['object']}",
+                            "reason": contradiction["reason"],
+                            "temporal_type": contradiction.get("temporal_type"),
+                            "resolution_needed": True,
+                            # Store structured data for proper persistence (fixes Issue #7)
+                            "new_subject": rel["subject"],
+                            "new_predicate": rel["predicate"],
+                            "new_object": rel["object"],
+                        })
 
                     # Mark the old fact as superseded
                     # Convert ID to int for FalkorDB (string IDs don't match)
@@ -263,14 +274,17 @@ class Observer:
         Get all existing relationships involving the subject (and optionally object).
         This allows us to find contradictions across different predicates.
         """
-        # Get all relationships where subject is involved
+        # Get all relationships where subject appears as subject
         subject_rels = await self.graph_store.query(subject, predicate=None)
 
-        # If object is provided, also get relationships involving the object
+        # If object is provided, get relationships involving the object
         if obj:
-            object_rels = await self.graph_store.query(obj, predicate=None)
+            # Get where object appears as subject
+            obj_as_subject = await self.graph_store.query(obj, predicate=None)
+            # Get where object appears as object (NEW - fixes Issue #3)
+            obj_as_object = await self.graph_store.query_by_object(obj, predicate=None)
             # Combine and deduplicate
-            all_rels = {rel.id: rel for rel in subject_rels + object_rels}
+            all_rels = {rel.id: rel for rel in subject_rels + obj_as_subject + obj_as_object}
             return list(all_rels.values())
 
         return subject_rels
@@ -366,14 +380,19 @@ class Observer:
         await self.graph_store.persist_entities(entities)
         await self.graph_store.persist_relationships(relationships)
         # Track contradictions as superseded facts
+        # FIXED Issue #7: Use structured fields instead of string splitting
         for contradiction in contradictions:
             await self.graph_store.persist_relationships(
                 [
                     {
-                        "subject": contradiction["existing_statement"].split()[0],
-                        "predicate": contradiction["existing_statement"].split()[1],
-                        "object": contradiction["existing_statement"].split()[-1],
-                        "metadata": {"superseded": True},
+                        "subject": contradiction.get("new_subject", ""),
+                        "predicate": contradiction.get("new_predicate", ""),
+                        "object": contradiction.get("new_object", ""),
+                        "metadata": {
+                            "superseded": True,
+                            "superseded_statement": contradiction.get("existing_statement", ""),
+                            "reason": contradiction.get("reason", ""),
+                        },
                     }
                 ]
             )

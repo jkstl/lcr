@@ -92,16 +92,22 @@ class ContextAssembler:
                     created_at = datetime.fromisoformat(created_at)
                 except ValueError:
                     created_at = datetime.utcnow()
+            
+            # FIXED Issue #4: Use combined score from vector search
+            # This includes both semantic similarity and utility score
+            combined_score = hit.get("_combined_score", 0.5)
+            utility_score = hit.get("utility_score", 0.5)
+            
             results.append(
                 RetrievedContext(
                     content=hit.get("content", ""),
                     source="vector",
-                    relevance_score=hit.get("utility_score", 0.5),
+                    relevance_score=combined_score,  # Use combined similarity + utility
                     temporal_score=1.0,
-                    final_score=hit.get("utility_score", 0.5),
+                    final_score=combined_score,
                     created_at=created_at,
                     fact_type=hit.get("fact_type", "episodic"),
-                    utility_score=hit.get("utility_score", 0.5),
+                    utility_score=utility_score,
                 )
             )
         return results
@@ -185,7 +191,8 @@ class ContextAssembler:
         pairs = [(query, candidate.content) for candidate in candidates]
         scores = self.reranker.predict(pairs)
         for candidate, score in zip(candidates, scores):
-            candidate.final_score *= score if score else 1.0
+            # FIXED Issue #5: Prevent treating 0.0 as falsy (use 'is not None')
+            candidate.final_score *= score if score is not None else 1.0
             if last_user_message:
                 lowered = last_user_message.lower().strip()
                 if lowered and lowered in candidate.content.lower():
