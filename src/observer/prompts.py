@@ -1,3 +1,10 @@
+# System messages for fine-tuned model (LFM2.5-1.2B-Instruct)
+# These differentiate between utility grading and entity extraction tasks
+UTILITY_SYSTEM_MESSAGE = "You are a utility grading assistant. Rate conversations as DISCARD (no information), STORE (preferences/opinions), or IMPORTANT (identity/relationships/life facts). Respond with exactly one word."
+
+EXTRACTION_SYSTEM_MESSAGE = "You are an entity extraction assistant. Extract entities and relationships from conversations in JSON format with entities (name, type, attributes) and relationships (subject, predicate, object, temporal)."
+
+# Utility grading prompt
 UTILITY_PROMPT = """Rate the memory-worthiness of this conversation turn using a simplified 3-level system.
 
 TURN:

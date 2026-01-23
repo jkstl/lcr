@@ -11,6 +11,7 @@ from ..memory.vector_store import init_vector_store
 from ..memory.graph_store import create_graph_store
 from ..models.embedder import Embedder
 from ..models.llm import OllamaClient
+from ..models.transformers_client import TransformersClient
 from ..models.reranker import Reranker
 from ..observer.observer import Observer
 from .prompts import SYSTEM_PROMPT_TEMPLATE
@@ -33,14 +34,25 @@ _reranker = Reranker()
 _embedder = Embedder()
 _context_assembler = ContextAssembler(_vector_table, _graph_store, _reranker, embedder=_embedder)
 _llm_client = OllamaClient()
+
+# Create observer client based on configuration
+# Format: "transformers:path/to/model" or regular Ollama model name
+if settings.observer_model.startswith("transformers:"):
+    model_path = settings.observer_model.split(":", 1)[1]
+    _observer_client = TransformersClient(model_path)
+    _observer_model_name = model_path  # Use for logging
+else:
+    _observer_client = _llm_client  # Use Ollama for regular models
+    _observer_model_name = settings.observer_model
+
 _observer = Observer(
-    _llm_client,
+    _observer_client,
     _vector_table,
     _graph_store,
-    model=settings.observer_model,
+    model=_observer_model_name,
 )
 _observer_tasks: list[asyncio.Task] = []
-# Semaphore to limit concurrent observer tasks (prevent overwhelming Ollama)
+# Semaphore to limit concurrent observer tasks (prevent overwhelming Ollama/GPU)
 # Max 2 concurrent observers = ~8-12 concurrent LLM calls (manageable load)
 _observer_semaphore = asyncio.Semaphore(2)
 

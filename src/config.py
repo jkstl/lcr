@@ -8,8 +8,11 @@ class Settings(BaseSettings):
     # LLM
     ollama_host: str = "http://localhost:11434"
     main_model: str = "qwen3:14b"
-    observer_model: str = "qwen3:1.7b"
     embedding_model: str = "nomic-embed-text"
+    # Observer model configuration
+    # Using fine-tuned LFM2.5-1.2B-Instruct model directly via transformers
+    # Format: "transformers:path/to/model" or regular Ollama model name
+    observer_model: str = "transformers:fine_tuning/lfm_1.2b_v1/model/merged"
 
     # Databases
     lancedb_path: str = "./data/lancedb"

@@ -11,6 +11,7 @@ from typing import Any, Callable, TypeVar
 from ..config import settings
 from ..models.embedder import Embedder
 from ..models.llm import OllamaClient, parse_json_response
+from ..models.transformers_client import TransformersClient
 from ..memory.vector_store import MemoryChunk, persist_chunks
 from ..memory.graph_store import GraphRelationship, GraphStore
 from .prompts import (
@@ -70,7 +71,7 @@ class ObserverOutput:
 class Observer:
     def __init__(
         self,
-        llm_client: OllamaClient,
+        llm_client: OllamaClient | TransformersClient,
         vector_table: Any,
         graph_store: GraphStore,
         embedder: Embedder | None = None,
@@ -169,7 +170,11 @@ class Observer:
 
     async def _grade_utility(self, text: str) -> UtilityGrade:
         prompt = UTILITY_PROMPT.format(text=text)
-        response = await retry_on_timeout(lambda: self.llm.generate(self.model, prompt))
+        # Use system message for fine-tuned model
+        from .prompts import UTILITY_SYSTEM_MESSAGE
+        response = await retry_on_timeout(lambda: self.llm.generate(
+            self.model, prompt, system=UTILITY_SYSTEM_MESSAGE
+        ))
         cleaned = response.strip().upper()
         try:
             grade = UtilityGrade(cleaned.lower())
@@ -199,10 +204,13 @@ class Observer:
 
     async def _extract_structured_data(self, text: str) -> dict[str, list[dict]]:
         from ..models.llm import parse_json_response
+        from .prompts import EXTRACTION_SYSTEM_MESSAGE
         
         prompt = EXTRACTION_PROMPT.format(text=text)
         try:
-            response = await retry_on_timeout(lambda: self.llm.generate(self.model, prompt))
+            response = await retry_on_timeout(lambda: self.llm.generate(
+                self.model, prompt, system=EXTRACTION_SYSTEM_MESSAGE
+            ))
             return parse_json_response(response)
         except (JSONDecodeError, ValueError) as e:
             LOGGER.warning(f"JSON extraction failed: {e}")

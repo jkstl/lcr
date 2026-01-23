@@ -29,3 +29,9 @@ test_*.py
 check_*.py
 VERSION
 nul
+
+# Fine-tuning artifacts
+fine_tuning/*/model/
+fine_tuning/*/checkpoint-*/
+fine_tuning/*/*.log
+fine_tuning/*/*.gguf
