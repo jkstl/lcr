@@ -35,3 +35,6 @@ fine_tuning/*/model/
 fine_tuning/*/checkpoint-*/
 fine_tuning/*/*.log
 fine_tuning/*/*.gguf
+fine_tuning/*/train.jsonl
+fine_tuning/*/val.jsonl
+scripts/generate_training_data*.py
