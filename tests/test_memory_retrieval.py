@@ -401,7 +401,7 @@ class TestObserverExtraction:
 
 
 class TestRerankerScoring:
-    """Tests for cross-encoder reranking functionality."""
+    """Tests for bi-encoder reranking functionality."""
 
     def test_reranker_scores_relevant_higher(self, reranker):
         """Relevant context should score higher than irrelevant."""
@@ -813,7 +813,12 @@ class TestUtilityGrading:
             graph_store=MagicMock(),
         )
 
+        # Current 3-level system
         assert observer._utility_to_score(UtilityGrade.DISCARD) == 0.0
+        assert observer._utility_to_score(UtilityGrade.STORE) == 0.6
+        assert observer._utility_to_score(UtilityGrade.IMPORTANT) == 1.0
+        
+        # Legacy 4-level system (backward compatibility)
         assert observer._utility_to_score(UtilityGrade.LOW) == 0.3
         assert observer._utility_to_score(UtilityGrade.MEDIUM) == 0.6
         assert observer._utility_to_score(UtilityGrade.HIGH) == 1.0
@@ -913,3 +918,79 @@ class TestPromptQuality:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+# -----------------------------------------------------------------------------
+# Tests for Recent Code Fixes
+# -----------------------------------------------------------------------------
+
+
+class TestRecentCodeFixes:
+    """Tests for fixes implemented from code review."""
+
+    @pytest.mark.asyncio
+    async def test_query_by_object_finds_relationships(self, graph_store):
+        """query_by_object() should find relationships where entity is object."""
+        # Add relationship where "Justine" is the object
+        await graph_store.persist_relationships([
+            {"subject": "User", "predicate": "SIBLING_OF", "object": "Justine", "metadata": {}},
+        ])
+
+        # Query by object should find it
+        results = await graph_store.query_by_object("Justine", predicate=None)
+        
+        assert len(results) > 0
+        assert any(r.subject == "User" and r.predicate == "SIBLING_OF" for r in results)
+
+    @pytest.mark.asyncio
+    async def test_semantic_similarity_in_vector_scoring(self):
+        """Context assembler should use combined similarity + utility score."""
+        from src.memory.vector_store import init_vector_store
+        
+        vector_table = init_vector_store()
+        assembler = ContextAssembler(
+            vector_table=vector_table,
+            graph_store=MagicMock(),
+            reranker=MagicMock(),
+        )
+
+        # Mock vector search to return items with _combined_score
+        mock_hits = [
+            {
+                "content": "Test content",
+                "utility_score": 0.5,
+                "_combined_score": 0.75,  # Should use this
+                "created_at": datetime.now().isoformat(),
+                "fact_type": "episodic",
+            }
+        ]
+
+        with patch('src.memory.context_assembler.vector_search', return_value=mock_hits):
+            results = await assembler._vector_search("test query", top_k=5)
+
+        # Should use _combined_score, not just utility_score
+        assert len(results) > 0
+        assert results[0].relevance_score == 0.75  # Uses combined score
+        assert results[0].utility_score == 0.5  # Still tracks utility separately
+
+    @pytest.mark.asyncio
+    async def test_contradiction_preserves_multiword_entities(self, graph_store):
+        """Contradiction tracking should not corrupt multi-word entity names."""
+        # This would previously fail because splitting "Worcester Massachusetts" 
+        # on whitespace would give wrong subject/predicate/object
+        
+        await graph_store.persist_relationships([
+            {
+                "subject": "Worcester Massachusetts",
+                "predicate": "LIVES_IN", 
+                "object": "User",
+                "metadata": {}
+            }
+        ])
+
+        relationships = await graph_store.query("Worcester Massachusetts", predicate=None)
+        assert len(relationships) > 0
+        
+        # Entity name should be preserved exactly
+        assert relationships[0].subject == "Worcester Massachusetts"
+        assert relationships[0].predicate == "LIVES_IN"
