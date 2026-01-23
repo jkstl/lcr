@@ -1,59 +1,77 @@
-UTILITY_PROMPT = """Rate the memory-worthiness of this conversation turn.
+UTILITY_PROMPT = """Rate the memory-worthiness of this conversation turn using a simplified 3-level system.
 
 TURN:
 {text}
 
-Rules:
-- DISCARD: Only trivial greetings ("hi", "thanks", "ok") with absolutely no information
-- LOW: Casual discussion with minimal new information
-- MEDIUM: Contains preferences, feelings, or opinions
-- HIGH: Contains ANY of the following:
-  * Schedules, appointments, or time-based commitments
-  * Relationships between people, organizations, or entities
-  * Concrete facts about the user's life, work, or interests
-  * **User's projects, hobbies, or side work** (even if detailed/technical)
-  * Technical details, architectures, or tools the user works with
-  * User's skills, expertise, or professional background
-  * Significant personal information or life events
-  * **Emotional content, feelings, or personal struggles** (depression, sadness, missing someone)
+SIMPLE 3-LEVEL SYSTEM:
 
-Examples:
+**DISCARD** - Pure acknowledgments with ZERO information
+Examples: "thanks", "ok", "hi", "you're welcome", "sure", "got it"
+→ No facts, no preferences, nothing to remember
 
-Example 1 - HIGH (project description):
-USER: I'm working on three projects: 1. LCR (AI system with dual-memory),
-      2. Tenant Shield (lease analysis), 3. Email Parser Pro (Cloudflare Workers app)
-ASSISTANT: These sound fascinating!
-→ HIGH (detailed information about user's projects and technical work)
+**STORE** - Any factual information worth remembering  
+- User mentions preferences, opinions, likes/dislikes
+- User shares thoughts, feelings, or general information
+- Any conversation that contains concrete details
+- Technical discussions, tool preferences, general facts
+→ If the turn has ANY factual content
 
-Example 2 - HIGH (technical discussion):
-USER: My app uses React Native for the frontend and FastAPI for the backend
-ASSISTANT: That's a solid tech stack!
-→ HIGH (concrete technical facts about user's work)
+**IMPORTANT** - Critical life facts that define the user
+- User's identity: name, job, company, role, responsibilities
+- User's relationships: family, friends, colleagues, romantic partners
+- User's situation: where they live, major life events, state changes
+- User's possessions: devices they own, tools used daily
+- Life events: job changes, moves, relationship changes, major plans
+→ Information about WHO the user IS or HOW they LIVE
 
-Example 3 - HIGH (emotional content):
-USER: I've been thinking about Giana a lot lately and it's making me sad
-ASSISTANT: I'm sorry to hear that.
-→ HIGH (significant emotional content about relationships and feelings)
+DECISION PROCESS:
+1. Is there ANY content beyond greetings? NO → DISCARD
+2. Does it reveal user's IDENTITY or LIFE SITUATION? YES → IMPORTANT  
+3. Otherwise → STORE
 
-Example 4 - MEDIUM (preference):
-USER: I prefer Python over JavaScript
-ASSISTANT: That's common for backend work
-→ MEDIUM (opinion/preference)
+EXAMPLES:
 
-Example 5 - LOW (vague interest):
-USER: Tell me more about that
-ASSISTANT: Sure, what would you like to know?
-→ LOW (no new information shared)
+Input: USER: I work at Acme Corp as a software engineer on the ML team
+       ASSISTANT: That's interesting!
+Output: IMPORTANT
+Why: Defines user's job, company, role, team (core identity)
 
-Example 6 - DISCARD (pure greeting):
-USER: thanks
-ASSISTANT: You're welcome!
-→ DISCARD (no content)
+Input: USER: My sister Justine lives in Worcester Massachusetts  
+       ASSISTANT: That's nice!
+Output: IMPORTANT
+Why: Family relationship + location (critical life fact)
 
-IMPORTANT: When in doubt, err on the side of HIGH rather than DISCARD.
-It's better to store too much than to lose important information.
+Input: USER: I prefer Python over JavaScript
+       ASSISTANT: That's common for backend
+Output: STORE
+Why: Preference worth remembering, but not core identity
 
-Respond with exactly one word: DISCARD, LOW, MEDIUM, or HIGH
+Input: USER: I bought a Dell Latitude 5520 laptop with 32GB RAM
+       ASSISTANT: Nice specs!
+Output: IMPORTANT
+Why: Device ownership (possession user uses regularly)
+
+Input: USER: I've been thinking about Giana a lot lately and it's making me sad
+       ASSISTANT: I'm sorry to hear that
+Output: IMPORTANT
+Why: Emotional state about specific person (relationship status)
+
+Input: USER: I don't like spicy food
+       ASSISTANT: Noted!
+Output: STORE
+Why: Preference worth remembering, but not life-defining
+
+Input: USER: Tell me more about that
+       ASSISTANT: Sure, what would you like to know?
+Output: STORE
+Why: Has minimal content but shows interest/engagement
+
+Input: USER: Thanks!
+       ASSISTANT: You're welcome!
+Output: DISCARD  
+Why: Zero content, pure acknowledgment
+
+Respond with exactly one word: DISCARD, STORE, or IMPORTANT
 """
 
 

@@ -3,9 +3,79 @@ from __future__ import annotations
 import httpx
 import json
 import logging
+import re
 from typing import Any
 
 from ..config import settings
+
+
+def parse_json_response(response: str) -> dict[str, Any]:
+    """
+    Parse JSON from LLM response with multiple fallback strategies.
+    
+    LLMs often wrap JSON in markdown blocks or add explanatory text.
+    This function tries multiple strategies to extract valid JSON.
+    
+    Strategies (in order):
+    1. Direct parse (fast path for well-formed responses)
+    2. Extract from markdown code blocks (```json ... ```)
+    3. Find first JSON object in text ({...})
+    4. Strip common preambles and try again
+    
+    Args:
+        response: Raw LLM response string
+        
+    Returns:
+        Parsed JSON dictionary
+        
+    Raises:
+        ValueError: If no valid JSON can be extracted
+    """
+    # Strategy 1: Direct parse (current approach - fast path)
+    try:
+        return json.loads(response)
+    except json.JSONDecodeError:
+        pass
+    
+    # Strategy 2: Extract from markdown code blocks
+    # Matches: ```json\n{...}\n``` or ```\n{...}\n```
+    json_match = re.search(
+        r'```(?:json)?\s*(.*?)```',
+        response,
+        re.DOTALL | re.IGNORECASE
+    )
+    if json_match:
+        try:
+            return json.loads(json_match.group(1).strip())
+        except json.JSONDecodeError:
+            pass
+    
+    # Strategy 3: Find first JSON object in text
+    # Look for {...} pattern (greedy to capture full object)
+    json_match = re.search(r'\{.*\}', response, re.DOTALL)
+    if json_match:
+        try:
+            return json.loads(json_match.group(0))
+        except json.JSONDecodeError:
+            pass
+    
+    # Strategy 4: Strip common preambles and postambles
+    # Remove everything before first { and after last }
+    cleaned = response.strip()
+    if '{' in cleaned and '}' in cleaned:
+        start = cleaned.find('{')
+        end = cleaned.rfind('}') + 1
+        try:
+            return json.loads(cleaned[start:end])
+        except json.JSONDecodeError:
+            pass
+    
+    # All strategies failed
+    raise ValueError(
+        f"No valid JSON found in response. "
+        f"First 200 chars: {response[:200]}"
+    )
+
 
 
 class OllamaClient:

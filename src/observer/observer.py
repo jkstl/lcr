@@ -10,7 +10,7 @@ from typing import Any, Callable, TypeVar
 
 from ..config import settings
 from ..models.embedder import Embedder
-from ..models.llm import OllamaClient
+from ..models.llm import OllamaClient, parse_json_response
 from ..memory.vector_store import MemoryChunk, persist_chunks
 from ..memory.graph_store import GraphRelationship, GraphStore
 from .prompts import (
@@ -48,6 +48,10 @@ async def retry_on_timeout(func: Callable[[], Any], max_retries: int = 3, delay:
 
 class UtilityGrade(Enum):
     DISCARD = "discard"
+    # New 3-level system
+    STORE = "store"
+    IMPORTANT = "important"
+    # Legacy 4-level system (backward compatibility)
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
@@ -194,11 +198,14 @@ class Observer:
         return []
 
     async def _extract_structured_data(self, text: str) -> dict[str, list[dict]]:
+        from ..models.llm import parse_json_response
+        
         prompt = EXTRACTION_PROMPT.format(text=text)
         try:
             response = await retry_on_timeout(lambda: self.llm.generate(self.model, prompt))
-            return loads(response)
-        except JSONDecodeError:
+            return parse_json_response(response)
+        except (JSONDecodeError, ValueError) as e:
+            LOGGER.warning(f"JSON extraction failed: {e}")
             return {"entities": [], "relationships": []}
 
     async def _check_contradictions(self, new_relationships: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -286,9 +293,11 @@ class Observer:
 
         try:
             response = await self.llm.generate(self.model, prompt)
-            result = loads(response)
+            from ..models.llm import parse_json_response
+            result = parse_json_response(response)
             return result.get("contradictions", [])
-        except (JSONDecodeError, KeyError) as e:
+        except (JSONDecodeError, KeyError, ValueError) as e:
+            LOGGER.warning(f"Contradiction detection JSON parse failed: {e}")
             # Fallback to simple contradiction detection if LLM fails
             return await self._simple_contradiction_check(new_rel, existing_rels)
 
@@ -362,10 +371,15 @@ class Observer:
             )
 
     def _utility_to_score(self, utility_grade: UtilityGrade) -> float:
+        """Map utility grade to numeric score for temporal decay."""
         mapping = {
+            # 3-level system (simplified)
             UtilityGrade.DISCARD: 0.0,
+            UtilityGrade.STORE: 0.6,
+            UtilityGrade.IMPORTANT: 1.0,
+            # 4-level system (legacy backward compatibility)
             UtilityGrade.LOW: 0.3,
             UtilityGrade.MEDIUM: 0.6,
             UtilityGrade.HIGH: 1.0,
         }
-        return mapping.get(utility_grade, 0.0)
+        return mapping.get(utility_grade, 0.6)  # Default to STORE/MEDIUM level
