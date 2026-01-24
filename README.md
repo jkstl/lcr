@@ -252,7 +252,8 @@ Key settings in `src/config.py` (override via `.env` file):
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `main_model` | qwen3:8b | Main conversation LLM |
-| `observer_model` | transformers:fine_tuning/lfm_1.2b_v1/model/merged | Entity extraction LLM |
+| `observer_utility_model` | qwen3:1.7b | Utility grading LLM |
+| `observer_extraction_model` | nuextract:numind/NuExtract-2.0-2B | Entity extraction LLM |
 | `embedding_model` | nomic-embed-text:v1.5 | Embedding model (flexible versioning) |
 | `ollama_host` | http://localhost:11434 | Ollama API endpoint |
 
@@ -260,7 +261,8 @@ Key settings in `src/config.py` (override via `.env` file):
 
 ```bash
 # Quick test: use environment variables
-OBSERVER_MODEL=qwen3:4b python -m src.main
+OBSERVER_UTILITY_MODEL=qwen3:4b python -m src.main
+OBSERVER_EXTRACTION_MODEL=nuextract:numind/NuExtract-2.0-2B python -m src.main
 
 # Persistent: create .env file from .env.example
 cp .env.example .env
@@ -301,7 +303,7 @@ For detailed model testing guide, see [MODEL_TESTING.md](MODEL_TESTING.md).
 ```bash
 # Override defaults by creating .env file
 MAIN_MODEL=qwen3:8b
-OBSERVER_MODEL=transformers:fine_tuning/lfm_1.2b_v1/model/merged
+OBSERVER_EXTRACTION_MODEL=transformers:fine_tuning/lfm_1.2b_v1/model/merged
 EMBEDDING_MODEL=nomic-embed-text:latest
 
 MAX_CONTEXT_TOKENS=4000

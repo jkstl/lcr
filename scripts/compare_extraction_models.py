@@ -89,12 +89,16 @@ TEST_CASES = [
 
 async def test_lfm_model(test_case):
     """Test extraction with current LFM2.5 fine-tuned model."""
-    model_path = settings.observer_model.replace('transformers:', '')
+    if not settings.observer_extraction_model.startswith("transformers:"):
+        raise RuntimeError(
+            "observer_extraction_model must start with transformers: to run LFM comparison"
+        )
+    model_path = settings.observer_extraction_model.replace('transformers:', '')
     client = TransformersClient(model_path)
 
     # Use training format (just the turn)
     response = await client.generate(
-        settings.observer_model,
+        settings.observer_extraction_model,
         test_case["input"],
         system=EXTRACTION_SYSTEM_MESSAGE
     )
@@ -193,7 +197,10 @@ async def main():
 
     # Load models once
     print("Loading models...")
-    lfm_model_path = settings.observer_model.replace('transformers:', '')
+    if not settings.observer_extraction_model.startswith("transformers:"):
+        print("✗ observer_extraction_model must start with transformers: to run LFM comparison")
+        return
+    lfm_model_path = settings.observer_extraction_model.replace('transformers:', '')
     lfm_client = TransformersClient(lfm_model_path)
     nuextract_client = NuExtractClient('numind/NuExtract-2.0-4B')
     print("✓ Models loaded")

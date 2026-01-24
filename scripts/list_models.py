@@ -93,9 +93,10 @@ def main():
 
     from src.config import settings
 
-    print(f"Main Model:      {settings.main_model}")
-    print(f"Observer Model:  {settings.observer_model}")
-    print(f"Embedding Model: {settings.embedding_model}")
+    print(f"Main Model:            {settings.main_model}")
+    print(f"Observer Utility:      {settings.observer_utility_model}")
+    print(f"Observer Extraction:   {settings.observer_extraction_model}")
+    print(f"Embedding Model:       {settings.embedding_model}")
 
     print()
     print("=" * 80)
@@ -104,12 +105,14 @@ def main():
     print()
     print("Option 1: Edit .env file (create from .env.example if needed)")
     print("  MAIN_MODEL=qwen3:4b")
-    print("  OBSERVER_MODEL=qwen3:0.6b")
+    print("  OBSERVER_UTILITY_MODEL=qwen3:0.6b")
+    print("  OBSERVER_EXTRACTION_MODEL=nuextract:numind/NuExtract-2.0-2B")
     print("  EMBEDDING_MODEL=nomic-embed-text")
     print()
     print("Option 2: Set environment variables")
     print("  export MAIN_MODEL=qwen3:4b")
-    print("  export OBSERVER_MODEL=qwen3:1.7b")
+    print("  export OBSERVER_UTILITY_MODEL=qwen3:1.7b")
+    print("  export OBSERVER_EXTRACTION_MODEL=nuextract:numind/NuExtract-2.0-2B")
     print()
     print("Option 3: Use the model testing tool")
     print("  python scripts/model_tester.py")
