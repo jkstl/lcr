@@ -12,6 +12,7 @@ from ..memory.graph_store import create_graph_store
 from ..models.embedder import Embedder
 from ..models.llm import OllamaClient
 from ..models.transformers_client import TransformersClient
+from ..models.nuextract_client import NuExtractClient
 from ..models.reranker import Reranker
 from ..observer.observer import Observer
 from .prompts import SYSTEM_PROMPT_TEMPLATE
@@ -35,21 +36,41 @@ _embedder = Embedder()
 _context_assembler = ContextAssembler(_vector_table, _graph_store, _reranker, embedder=_embedder)
 _llm_client = OllamaClient()
 
-# Create observer client based on configuration
-# Format: "transformers:path/to/model" or regular Ollama model name
-if settings.observer_model.startswith("transformers:"):
-    model_path = settings.observer_model.split(":", 1)[1]
-    _observer_client = TransformersClient(model_path)
-    _observer_model_name = model_path  # Use for logging
-else:
-    _observer_client = _llm_client  # Use Ollama for regular models
-    _observer_model_name = settings.observer_model
+# Create observer clients based on dual-model configuration
+# Utility model: for DISCARD/STORE/IMPORTANT classification
+# Extraction model: for entity/relationship extraction
 
+# Initialize utility client (for grading)
+if settings.observer_utility_model.startswith("transformers:"):
+    utility_path = settings.observer_utility_model.split(":", 1)[1]
+    _utility_client = TransformersClient(utility_path)
+    _utility_model_name = settings.observer_utility_model
+else:
+    _utility_client = _llm_client  # Use Ollama for regular models
+    _utility_model_name = settings.observer_utility_model
+
+# Initialize extraction client
+if settings.observer_extraction_model.startswith("nuextract:"):
+    extraction_model = settings.observer_extraction_model.split(":", 1)[1]
+    _extraction_client = NuExtractClient(extraction_model)
+    _extraction_model_name = settings.observer_extraction_model
+elif settings.observer_extraction_model.startswith("transformers:"):
+    extraction_path = settings.observer_extraction_model.split(":", 1)[1]
+    _extraction_client = TransformersClient(extraction_path)
+    _extraction_model_name = settings.observer_extraction_model
+else:
+    _extraction_client = _llm_client
+    _extraction_model_name = settings.observer_extraction_model
+
+# Create observer with dual-model support
+# For now, pass extraction client as primary (observer will use utility_client for grading)
 _observer = Observer(
-    _observer_client,
+    _extraction_client,
     _vector_table,
     _graph_store,
-    model=_observer_model_name,
+    model=_extraction_model_name,
+    utility_client=_utility_client,
+    utility_model=_utility_model_name,
 )
 _observer_tasks: list[asyncio.Task] = []
 # Semaphore to limit concurrent observer tasks (prevent overwhelming Ollama/GPU)

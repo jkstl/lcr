@@ -1,6 +1,6 @@
 # CLAUDE.md — Developer Handoff Document
 
-**Version 1.4.0** | **Status: Fine-tuned Model Ready**
+**Version 1.5.0** | **Status: Dual-Model Observer Architecture**
 
 Essential context for developers continuing work on LCR. See [README.md](README.md) for user documentation.
 
@@ -10,105 +10,134 @@ Essential context for developers continuing work on LCR. See [README.md](README.
 
 **What is LCR?** Local Cognitive RAG - Privacy-first conversational AI with persistent episodic memory using dual-architecture (vector + graph) and natural voice output.
 
-**Current Status:** Production-ready with fine-tuned observer model (100% accuracy).
+**Current Status:** Production-ready with dual-model observer architecture for optimal accuracy.
 
-**Latest:** Successfully fine-tuned LiquidAI/LFM2.5-1.2B-Instruct (100% utility grading, perfect entity extraction). Now using transformers directly instead of Ollama.
+**Latest:** Migrated to **NuExtract-2.0-2B** for entity extraction (~90% accuracy, zero hallucination) + **qwen3:1.7b** for utility grading (100% accuracy). Downgraded main LLM to qwen3:8b for VRAM budget.
 
 ---
 
 ## Current Focus (January 2026)
 
-### Fine-Tuned Observer Model ✅
+### Dual-Model Observer Architecture ✅
 
-**Status**: **Deployed** via HuggingFace Transformers (GGUF conversion failed due to novel architecture)
+**Status**: **Production** - Deployed Jan 24, 2026
 
-**Training Completed**:
-- Base: **LiquidAI/LFM2.5-1.2B-Instruct** (novel LIV convolution + GQA architecture)
-- Method: LoRA (16-rank on Q/K/V/O projections)
-- Data: 3,300 examples with **system message differentiation**
-- Tasks: Utility grading + entity/relationship extraction
-- Results: **100% utility grading accuracy**, perfect entity extraction
-- Final Loss: 0.29 (train), 0.32 (eval)
-- Location: `fine_tuning/lfm_1.2b_v1/model/merged/`
+**Architecture**:
+- **Utility Grading**: qwen3:1.7b via Ollama (100% accuracy)
+- **Entity/Relationship Extraction**: NuExtract-2.0-2B via transformers (90% accuracy, zero hallucination)
+- **Main LLM**: qwen3:8b via Ollama (downgraded from 14b for VRAM)
 
-**Key Improvement**: Added system messages to differentiate tasks:
-- Utility: "You are a utility grading assistant..."
-- Extraction: "You are an entity extraction assistant..."
+**Why Dual-Model?**
+- **Specialized tasks**: Utility grading needs classification, extraction needs structure
+- **NuExtract strengths**: Purely extractive (can't hallucinate), template-based, excellent entity attribution
+- **qwen3:1.7b strengths**: Perfect utility grading, fast, minimal VRAM
+- **VRAM budget**: 13.8 GB total (qwen3:8b 6GB + qwen3:1.7b 3.5GB + NuExtract 4.3GB)
 
-**Why Not Ollama**: GGUF conversion failed (missing tensor 'output_norm') due to LFM2.5's novel architecture. Using `transformers` directly instead - model loads on startup (~2s), same inference speed.
+**NuExtract-2.0-2B Details**:
+- Base: Qwen2-VL-2B-Instruct (MIT license)
+- Method: Template-based extraction with in-context learning
+- No fine-tuning needed - works out of box with examples
+- Purely extractive - cannot hallucinate entities
+- Location: Auto-downloaded from HuggingFace on first use
 
-**Dataset Quality**:
-- Reused high-quality GPT-4o labeled data from Qwen3 attempt
-- Multi-entity scenarios, temporal states, complex relationships
-- Distribution: 11% DISCARD, 31% STORE, 58% IMPORTANT
+**Why Not Fine-Tuned LFM2.5?**
+- qwen3:1.7b matches LFM2.5's 100% utility accuracy without fine-tuning
+- NuExtract far exceeds LFM2.5's extraction accuracy (90% vs 85%)
+- Simpler architecture - no custom fine-tuned models to maintain
+- Better licensing - MIT vs custom training
 
 ---
 
 ## Architecture Overview
 
 ```
-User Input → Context Assembly (Parallel) → LLM (Ollama) → Response
-                     ↓ Async Observer (Transformers fine-tuned model)
+User Input → Context Assembly (Parallel) → qwen3:8b (Ollama) → Response
+                     ↓ Async Dual-Model Observer
+                     ├─ qwen3:1.7b (Utility Grading)
+                     └─ NuExtract-2.0-2B (Entity Extraction)
                      ↓ Persist to Vector + Graph
 ```
 
 **Observer Pipeline**:
-1. Utility grading with system message (DISCARD/STORE/IMPORTANT)
-2. Parallel extraction (entities, relationships, summary)
+1. **Utility grading** (qwen3:1.7b): DISCARD/STORE/IMPORTANT classification
+2. **Parallel tasks**:
+   - Entity/relationship extraction (NuExtract-2.0-2B with templates)
+   - Summary generation
+   - Retrieval query generation
 3. Semantic contradiction detection
 4. Mark superseded facts
 5. Persist to LanceDB + FalkorDB
 
 **Key Optimizations**:
 - Parallel database queries
-- Early exit for DISCARD (~4x faster)  
+- Early exit for DISCARD (~4x faster)
 - Parallel observer tasks (~3x faster)
 - Semaphore limiting (max 2 concurrent, prevent GPU overload)
 - Robust JSON parsing with 4 fallback strategies
-- **Direct transformers** (bypasses Ollama overhead)
+- Template-based extraction (prevents hallucination)
 
 ---
 
 ## Observer Models
 
-| Model | Status | Accuracy | Speed | Use Case |
-|-------|--------|----------|-------|----------|
-| **lfm-observer (LFM2.5-1.2B)** | **Production** | **100%** | ~3s | 🆕 Fine-tuned via transformers ⭐ |
-| qwen3:1.7b | Backup | 75% | 10s | Fallback if GPU unavailable |
-| qwen3:0.6b | Deprecated | 75% | 3s | Old baseline |
+| Model | Role | Accuracy | VRAM | Use Case |
+|-------|------|----------|------|----------|
+| **qwen3:1.7b** | **Utility** | **100%** | 3.5 GB | DISCARD/STORE/IMPORTANT classification ⭐ |
+| **NuExtract-2.0-2B** | **Extraction** | **~90%** | 4.3 GB | Entity/relationship extraction (zero hallucination) ⭐ |
+| qwen3:0.6b | Backup utility | 60% | 2 GB | Fallback if needed |
+| LFM2.5-1.2B (fine-tuned) | Deprecated | 85% | 3 GB | Replaced by NuExtract |
 
-**Configuration**:  
-- Set `observer_model` in `src/config.py` or `.env`
-- Format: `"transformers:path/to/model"` or regular Ollama model name
-- Default: `"transformers:fine_tuning/lfm_1.2b_v1/model/merged"`
+**Configuration**:
+```python
+# src/config.py
+observer_utility_model = "qwen3:1.7b"
+observer_extraction_model = "nuextract:numind/NuExtract-2.0-2B"
+```
 
-**Switching Back to Ollama**: Change to `observer_model: "qwen3:1.7b"` if needed
+**VRAM Budget**:
+```
+qwen3:8b (main):            6.0 GB
+qwen3:1.7b (utility):       3.5 GB
+NuExtract-2.0-2B (extract): 4.3 GB
+Kokoro TTS (CPU):           0.0 GB
+────────────────────────────────────
+Total:                     13.8 GB / 16.3 GB (85%)
+Remaining:                  2.5 GB (15%)
+```
 
 ---
 
 ## Critical Files
 
 ### Core Logic
-- `src/observer/observer.py` - Extraction, contradiction detection, persistence
-- `src/observer/prompts.py` - 3-level UTILITY_PROMPT, EXTRACTION_PROMPT
+- `src/observer/observer.py` - Dual-model observer (utility + extraction)
+- `src/observer/prompts.py` - Utility prompts (3-level UTILITY_PROMPT)
+- `src/observer/nuextract_templates.py` - Extraction templates and examples
+- `src/models/nuextract_client.py` - NuExtract client implementation
 - `src/models/llm.py` - `parse_json_response()` with robust fallbacks
 - `src/memory/context_assembler.py` - Retrieval, temporal decay
 - `src/memory/graph_store.py` - FalkorDB operations
-- `src/orchestration/graph.py` - LangGraph state machine
-- `src/voice/tts.py` - Kokoro TTS engine
+- `src/orchestration/graph.py` - LangGraph state machine with dual-model init
+- `src/voice/tts.py` - Kokoro TTS engine (CPU-only)
 
 ### Configuration
 - `src/config.py` - All settings (models, top-k, decay, TTS)
 - `.env` - Environment overrides
 
-### Fine-tuning
-- `fine_tuning/qwen3_0.6b_v2/README.md` - Full documentation
-- `fine_tuning/qwen3_0.6b_v2/model/merged/` - Ready for GGUF conversion
+### NuExtract Integration
+- `src/models/nuextract_client.py` - Client for NuExtract models
+- `src/observer/nuextract_templates.py` - Templates with in-context examples
+- `scripts/compare_extraction_models.py` - Model comparison tool
+- `NUEXTRACT_INTEGRATION_REPORT.md` - Full analysis and benchmarks
+
+### Fine-tuning (Deprecated)
+- `fine_tuning/lfm_1.2b_v1/` - LFM2.5 fine-tune (no longer used)
+- `fine_tuning/qwen3_0.6b_v2/` - Qwen3 fine-tune (superseded)
 
 ### Utilities
 - `scripts/inspect_memory.py` - View stored memories
 - `scripts/view_conversations.py` - Browse conversation logs
-- `scripts/observer_model_comparison.py` - Compare performance
+- `scripts/nuclear_reset.py` - Complete memory wipe
 
 ---
 
@@ -118,6 +147,35 @@ User Input → Context Assembly (Parallel) → LLM (Ollama) → Response
 - **DISCARD**: Pure acknowledgments (score: 0.0)
 - **STORE**: Factual information (score: 0.6)
 - **IMPORTANT**: Identity, relationships, life facts (score: 1.0)
+
+**Model**: qwen3:1.7b (100% accuracy, no fine-tuning needed)
+
+### Entity/Relationship Extraction
+
+**Model**: NuExtract-2.0-2B (template-based, purely extractive)
+
+**Template Format**:
+```json
+{
+  "fact_type": "core|preference|episodic",
+  "entities": [
+    {"name": "verbatim-string", "type": "string", "attributes": {}}
+  ],
+  "relationships": [
+    {"subject": "verbatim-string", "predicate": "string", "object": "verbatim-string", "temporal": "string"}
+  ]
+}
+```
+
+**In-Context Learning**:
+- 3 examples guide entity attribution
+- Teaches "My sister X" → X is subject
+- Prevents user/entity confusion
+
+**Key Benefits**:
+- **Zero hallucination**: Purely extractive, cannot invent entities
+- **90% accuracy**: Better entity attribution than fine-tuned models
+- **No maintenance**: No retraining, just update examples if needed
 
 ### Fact Types
 - `core`: Never decay (name, work, family, devices)
@@ -150,14 +208,21 @@ GRAPH_SEARCH_TOP_K = 15
 ```
 
 **Model Selection**:
-- Main: `qwen3:14b` (quality) or `:8b`/`:4b` (speed)
-- Observer: `qwen3:1.7b` (current) or `qwen3-observer` (after testing)
+- Main: `qwen3:8b` (current, good balance) or `:4b` (faster, lower quality)
+- Utility: `qwen3:1.7b` (optimal, 100% accuracy)
+- Extraction: `nuextract:numind/NuExtract-2.0-2B` (optimal, MIT license)
 - Embedder: `nomic-embed-text` (don't change)
+
+**VRAM Optimization**:
+- Downgrade main: qwen3:8b → qwen3:4b saves ~2.5GB
+- Single observer: Drop utility model, use NuExtract for both (loses accuracy)
+- Disable TTS: Doesn't affect VRAM (runs on CPU)
 
 **TTS**:
 - Enable: `/voice` command or `TTS_ENABLED=true`
 - Voices: `af_heart` (default), `af_bella`, `af_nicole`
 - Speed: `TTS_SPEED=1.0` (0.5-2.0 range)
+- **VRAM**: None (CPU-only via ONNX runtime)
 
 ---
 
@@ -176,8 +241,8 @@ pytest tests/test_semantic_contradictions.py -v # Contradictions
 ## Development Priorities
 
 ### Immediate
-1. **Deploy Fine-tuned Model** - Convert to GGUF, test, deploy if > 85% accuracy
-2. **Remove Legacy 4-Level** - Clean up LOW/MEDIUM/HIGH from UtilityGrade enum
+1. ✅ **NuExtract Deployed** - Dual-model architecture production-ready
+2. **Monitor accuracy** - Track extraction quality across diverse scenarios
 
 ### Medium
 1. **STT Integration** - Whisper for voice input
@@ -192,6 +257,12 @@ pytest tests/test_semantic_contradictions.py -v # Contradictions
 ---
 
 ## Recent Changes
+
+**v1.5.0** (Jan 2026):
+- **Dual-model observer**: qwen3:1.7b (utility) + NuExtract-2.0-2B (extraction)
+- **Main LLM downgrade**: qwen3:14b → qwen3:8b for VRAM budget
+- **Zero hallucination**: NuExtract purely extractive approach
+- **Simplified architecture**: Dropped fine-tuned LFM2.5, uses base models
 
 **v1.4.0** (Jan 2026):
 - Fine-tuned qwen3-observer on 3,300 examples
@@ -208,11 +279,24 @@ pytest tests/test_semantic_contradictions.py -v # Contradictions
 
 ---
 
+## Ollama Models Required
+
+```bash
+# Pull required models
+ollama pull qwen3:8b           # Main LLM (6GB VRAM)
+ollama pull qwen3:1.7b         # Utility grading (3.5GB VRAM)
+ollama pull nomic-embed-text   # Embeddings
+```
+
+**NuExtract-2.0-2B** auto-downloads from HuggingFace on first use (~4GB download).
+
+---
+
 ## Git Repository
 
 **GitHub**: https://github.com/jkstl/lcr
 
 ---
 
-*Last Updated: 2026-01-23*  
-*Version: 1.4.0*
+*Last Updated: 2026-01-24*
+*Version: 1.5.0*

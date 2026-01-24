@@ -35,12 +35,26 @@ async def check_system_status() -> dict[str, dict]:
 
                 # Check for model name with flexible version matching
                 main_model_base = settings.main_model.split(':')[0]
-                observer_model_base = settings.observer_model.split(':')[0]
                 embedding_model_base = settings.embedding_model.split(':')[0]
 
                 main_model_loaded = any(main_model_base in m for m in model_names)
-                observer_model_loaded = any(observer_model_base in m for m in model_names)
                 embedding_model_loaded = any(embedding_model_base in m for m in model_names)
+
+                # Check observer model - handle transformers: prefix separately
+                if settings.observer_model.startswith("transformers:"):
+                    # Extract path after "transformers:" prefix
+                    model_path = settings.observer_model.split(":", 1)[1]
+                    # Check if model directory exists and has required files
+                    model_dir = Path(model_path)
+                    observer_model_loaded = (
+                        model_dir.exists() and
+                        model_dir.is_dir() and
+                        (model_dir / "config.json").exists() and
+                        (model_dir / "model.safetensors").exists()
+                    )
+                else:
+                    observer_model_base = settings.observer_model.split(':')[0]
+                    observer_model_loaded = any(observer_model_base in m for m in model_names)
 
                 status["ollama"] = {
                     "status": "ok",

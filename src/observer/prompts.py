@@ -96,6 +96,33 @@ TURN:
 
 OUTPUT:"""
 
+# Simplified extraction prompt for fine-tuned models (no examples to avoid hallucination)
+EXTRACTION_PROMPT_FINETUNED = """Extract entities, relationships, and classify the fact type from the conversation turn.
+
+TURN:
+{text}
+
+Instructions:
+1. Extract ONLY entities explicitly mentioned in the TURN above - do not infer or hallucinate
+2. Use "User" as subject when user talks about themselves ("I work at...", "my birthday is...")
+3. Use the actual person's name when user mentions others ("My sister X..." → subject="X")
+4. Capture attributes: age, role, occupation, dates, birthdays in the "attributes" field
+5. Relationship types: HAS_NAME, SIBLING_OF, PARENT_OF, WORKS_AT, WORKS_ON, LIVES_IN, OWNS, PREFERS, etc.
+6. Temporal states: VISITING (ongoing), RETURNED_HOME (completed), SCHEDULED_FOR (future)
+7. Fact type must be exactly one of: "core", "preference", or "episodic"
+
+Output valid JSON with proper values:
+{{
+    "fact_type": "core",
+    "entities": [
+        {{"name": "entity name", "type": "Person", "attributes": {{"age": "25"}}}}
+    ],
+    "relationships": [
+        {{"subject": "User", "predicate": "WORKS_AT", "object": "Company", "metadata": {{}}}}
+    ]
+}}"""
+
+# Original extraction prompt with examples (for base/few-shot models like Ollama)
 EXTRACTION_PROMPT = """Extract entities, relationships, and classify the fact type from the conversation turn.
 
 TURN:

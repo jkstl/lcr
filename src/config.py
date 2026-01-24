@@ -7,12 +7,21 @@ except ImportError:  # pragma: no cover
 class Settings(BaseSettings):
     # LLM
     ollama_host: str = "http://localhost:11434"
-    main_model: str = "qwen3:14b"
+    main_model: str = "qwen3:8b"  # Downgraded from 14b for VRAM budget
     embedding_model: str = "nomic-embed-text"
-    # Observer model configuration
-    # Using fine-tuned LFM2.5-1.2B-Instruct model directly via transformers
-    # Format: "transformers:path/to/model" or regular Ollama model name
-    observer_model: str = "transformers:fine_tuning/lfm_1.2b_v1/model/merged"
+
+    # Observer model configuration (dual-model architecture)
+    # For utility grading (DISCARD/STORE/IMPORTANT classification)
+    # qwen3:1.7b achieves 100% accuracy (same as fine-tuned LFM2.5, but simpler)
+    observer_utility_model: str = "qwen3:1.7b"
+
+    # For entity/relationship extraction
+    # NuExtract-2.0-2B: ~90% accuracy, zero hallucination, MIT license
+    # Options:
+    #   "nuextract:model" - NuExtract (best accuracy, no hallucination) - RECOMMENDED
+    #   "transformers:path" - HuggingFace transformers model
+    #   "model_name" - Ollama model
+    observer_extraction_model: str = "nuextract:numind/NuExtract-2.0-2B"
 
     # Databases
     lancedb_path: str = "./data/lancedb"

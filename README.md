@@ -1,6 +1,6 @@
 # Local Cognitive RAG (LCR)
 
-**Version 1.4.0**
+**Version 1.5.0**
 
 
 A local, privacy-first conversational AI system with persistent episodic memory and natural voice output. LCR runs entirely offline—no external API calls, no cloud dependencies—while maintaining rich contextual awareness across sessions through a dual-memory architecture combining semantic vector search with a structured knowledge graph.
@@ -82,19 +82,19 @@ A local, privacy-first conversational AI system with persistent episodic memory 
                              │
                              ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│                    OBSERVER (Async) - Optimized                     │
+│                OBSERVER (Async) - Dual-Model                        │
 │                                                                     │
-│  1. Grade Utility → DISCARD / STORE / IMPORTANT (3-level system)     │
+│  1. Grade Utility (qwen3:1.7b) → DISCARD/STORE/IMPORTANT (100%)   │
 │  2. IF DISCARD → Early Exit (skip steps 3-6)                       │
 │  3. ELSE Parallel Processing:                                      │
+│     • Extract Entities (NuExtract-2.0-2B, ~90%, zero hallucination)│
+│     • Extract Relationships (template-based, purely extractive)    │
 │     • Classify Fact Type → core / preference / episodic            │
-│     • Extract Entities → Person, Place, Organization, etc.         │
-│     • Extract Relationships → WORKS_AT, SIBLING_OF, PREFERS, etc.  │
 │     • Generate Summary + Retrieval Queries                         │
 │  4. Detect Contradictions → Mark old facts as superseded           │
 │  5. Persist to LanceDB (vector) + FalkorDB (graph)                 │
 │                                                                     │
-│  Model: LFM2.5-1.2B-Instruct (fine-tuned, 100% accuracy)           │
+│  Models: qwen3:1.7b (utility) + NuExtract-2.0-2B (extraction)     │
 └─────────────────────────────────────────────────────────────────────┘
                              │
                              ▼
@@ -105,8 +105,9 @@ A local, privacy-first conversational AI system with persistent episodic memory 
 
 | Component | Technology | Purpose |
 |-----------|------------|---------|
-| **Main LLM** | Qwen3 14B via Ollama | Conversation generation |
-| **Observer LLM** | LFM2.5-1.2B-Instruct (fine-tuned, 100% accuracy) | Entity/relationship extraction |
+| **Main LLM** | Qwen3 8B via Ollama | Conversation generation |
+| **Observer (Utility)** | qwen3:1.7b via Ollama | Utility grading (100% accuracy) |
+| **Observer (Extraction)** | NuExtract-2.0-2B via transformers | Entity/relationship extraction (~90%, zero hallucination) |
 | **Embeddings** | nomic-embed-text v1.5 | Semantic vector generation |
 | **Reranker** | all-MiniLM-L6-v2 | Bi-encoder cosine similarity scoring |
 | **Vector Store** | LanceDB | Semantic memory storage |
@@ -152,7 +153,7 @@ pip install -r requirements.txt
 
 ```bash
 # Required Ollama models
-ollama pull qwen3:14b          # Main conversation model
+ollama pull qwen3:8b          # Main conversation model
 ollama pull nomic-embed-text   # Embedding model (any version)
 ```
 
@@ -250,7 +251,7 @@ Key settings in `src/config.py` (override via `.env` file):
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `main_model` | qwen3:14b | Main conversation LLM |
+| `main_model` | qwen3:8b | Main conversation LLM |
 | `observer_model` | transformers:fine_tuning/lfm_1.2b_v1/model/merged | Entity extraction LLM |
 | `embedding_model` | nomic-embed-text:v1.5 | Embedding model (flexible versioning) |
 | `ollama_host` | http://localhost:11434 | Ollama API endpoint |
@@ -299,7 +300,7 @@ For detailed model testing guide, see [MODEL_TESTING.md](MODEL_TESTING.md).
 
 ```bash
 # Override defaults by creating .env file
-MAIN_MODEL=qwen3:14b
+MAIN_MODEL=qwen3:8b
 OBSERVER_MODEL=transformers:fine_tuning/lfm_1.2b_v1/model/merged
 EMBEDDING_MODEL=nomic-embed-text:latest
 
@@ -544,8 +545,9 @@ python scripts/inspect_memory.py
 
 ```bash
 # System supports flexible version matching
-ollama pull qwen3:14b
-ollama pull nomic-embed-text  # Any version (v1.5, latest, etc.)
+ollama pull qwen3:8b           # Main LLM
+ollama pull qwen3:1.7b         # Observer utility grading
+ollama pull nomic-embed-text   # Embeddings  # Any version (v1.5, latest, etc.)
 
 # Verify installation
 ollama list
@@ -635,8 +637,8 @@ docker logs lcr-codex-falkordb-1
 
 ### Scaling & Resources
 - **Scaling:** System handles thousands of conversations before slowdown
-- **Bottleneck:** Main LLM inference (Qwen3 14B), not memory retrieval
-- **VRAM Usage:** ~10GB for Qwen3 14B, ~2GB for reranker
+- **Bottleneck:** Main LLM inference (Qwen3 8B), not memory retrieval
+- **VRAM Usage:** ~14GB total (6GB main LLM + 3.5GB utility + 4.3GB extraction)
 - **Memory Retrieval:** Sub-100ms even with 10k+ stored memories
 
 ---

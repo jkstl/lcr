@@ -46,7 +46,7 @@ class TransformersClient:
         prompt: str,
         system: Optional[str] = None,
         temperature: float = 0.1,
-        max_tokens: int = 512,
+        max_tokens: int = 1024,
     ) -> str:
         """
         Generate text using the loaded model.

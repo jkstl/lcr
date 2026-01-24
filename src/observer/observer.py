@@ -76,12 +76,16 @@ class Observer:
         graph_store: GraphStore,
         embedder: Embedder | None = None,
         model: str | None = None,
+        utility_client: OllamaClient | TransformersClient | None = None,
+        utility_model: str | None = None,
     ) -> None:
-        self.llm = llm_client
+        self.llm = llm_client  # Primary client (extraction)
+        self.utility_llm = utility_client or llm_client  # Separate for utility grading
+        self.utility_model = utility_model or model
         self.vector_table = vector_table
         self.graph_store = graph_store
         self.embedder = embedder or Embedder()
-        self.model = model or settings.observer_model
+        self.model = model or settings.observer_extraction_model
 
     async def process_turn(
         self,
@@ -108,39 +112,23 @@ class Observer:
                 retrieval_queries=[],
             )
 
-        # Extract from BOTH user and assistant content separately
+        # Extract ONLY from user content (not assistant to prevent hallucinations)
         # Summary and queries use combined for full context
-        user_data, assistant_data, summary, queries = await asyncio.gather(
+        user_data, summary, queries = await asyncio.gather(
             self._extract_structured_data(user_only),
-            self._extract_structured_data(assistant_only),
             self._generate_summary(combined_input),
             self._generate_retrieval_queries(combined_input),
         )
 
-        # Merge entities from both sources
-        entities = user_data.get("entities", []) + assistant_data.get("entities", [])
-        
+        # Use only user entities and relationships (ground truth)
+        entities = user_data.get("entities", [])
+
         # Tag user relationships as high confidence (ground truth)
-        user_relationships = user_data.get("relationships", [])
-        for rel in user_relationships:
+        relationships = user_data.get("relationships", [])
+        for rel in relationships:
             rel["source"] = "user_stated"
             rel["confidence"] = 1.0
-        
-        # Tag assistant relationships as low confidence (may be hallucinated)
-        assistant_relationships = assistant_data.get("relationships", [])
-        for rel in assistant_relationships:
-            rel["source"] = "assistant_inferred"
-            rel["confidence"] = 0.3
-        
-        # Merge relationships, but user facts supersede assistant inferences
-        # If same subject+predicate exists from both, only keep user version
-        user_keys = {(r["subject"], r["predicate"]) for r in user_relationships}
-        filtered_assistant = [
-            r for r in assistant_relationships 
-            if (r["subject"], r["predicate"]) not in user_keys
-        ]
-        
-        relationships = user_relationships + filtered_assistant
+
         fact_type = user_data.get("fact_type", "episodic")
 
         contradictions = await self._check_contradictions(relationships)
@@ -170,10 +158,11 @@ class Observer:
 
     async def _grade_utility(self, text: str) -> UtilityGrade:
         prompt = UTILITY_PROMPT.format(text=text)
-        # Use system message for fine-tuned model
+        # Use system message for utility grading
         from .prompts import UTILITY_SYSTEM_MESSAGE
-        response = await retry_on_timeout(lambda: self.llm.generate(
-            self.model, prompt, system=UTILITY_SYSTEM_MESSAGE
+        # Use dedicated utility client (may be different from extraction client)
+        response = await retry_on_timeout(lambda: self.utility_llm.generate(
+            self.utility_model, prompt, system=UTILITY_SYSTEM_MESSAGE
         ))
         cleaned = response.strip().upper()
         try:
@@ -205,17 +194,48 @@ class Observer:
 
     async def _extract_structured_data(self, text: str) -> dict[str, list[dict]]:
         from ..models.llm import parse_json_response
-        from .prompts import EXTRACTION_SYSTEM_MESSAGE
-        
-        prompt = EXTRACTION_PROMPT.format(text=text)
-        try:
-            response = await retry_on_timeout(lambda: self.llm.generate(
-                self.model, prompt, system=EXTRACTION_SYSTEM_MESSAGE
-            ))
-            return parse_json_response(response)
-        except (JSONDecodeError, ValueError) as e:
-            LOGGER.warning(f"JSON extraction failed: {e}")
-            return {"entities": [], "relationships": []}
+        from .prompts import EXTRACTION_SYSTEM_MESSAGE, EXTRACTION_PROMPT_FINETUNED
+        from .nuextract_templates import get_extraction_template, get_extraction_examples
+        from ..models.nuextract_client import NuExtractClient
+
+        # NuExtract: use template-based extraction
+        if self.model.startswith("nuextract:"):
+            try:
+                # NuExtractClient has native extract() method
+                if isinstance(self.llm, NuExtractClient):
+                    result = await self.llm.extract(
+                        document=text,
+                        template=get_extraction_template(),
+                        examples=get_extraction_examples()
+                    )
+                    return parse_json_response(result)
+            except (JSONDecodeError, ValueError) as e:
+                LOGGER.debug(f"NuExtract JSON extraction failed: {e}")
+                return {"entities": [], "relationships": []}
+
+        # Fine-tuned transformers models: use training format (just the turn, no extra instructions)
+        elif self.model.startswith("transformers:"):
+            prompt = text  # Use exact training format: system message + turn only
+            try:
+                response = await retry_on_timeout(lambda: self.llm.generate(
+                    self.model, prompt, system=EXTRACTION_SYSTEM_MESSAGE
+                ))
+                return parse_json_response(response)
+            except (JSONDecodeError, ValueError) as e:
+                LOGGER.debug(f"JSON extraction failed: {e}")
+                return {"entities": [], "relationships": []}
+
+        # Base models (Ollama): use few-shot prompt with examples
+        else:
+            prompt = EXTRACTION_PROMPT.format(text=text)
+            try:
+                response = await retry_on_timeout(lambda: self.llm.generate(
+                    self.model, prompt, system=EXTRACTION_SYSTEM_MESSAGE
+                ))
+                return parse_json_response(response)
+            except (JSONDecodeError, ValueError) as e:
+                LOGGER.debug(f"JSON extraction failed: {e}")
+                return {"entities": [], "relationships": []}
 
     async def _check_contradictions(self, new_relationships: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """
@@ -319,7 +339,7 @@ class Observer:
             result = parse_json_response(response)
             return result.get("contradictions", [])
         except (JSONDecodeError, KeyError, ValueError) as e:
-            LOGGER.warning(f"Contradiction detection JSON parse failed: {e}")
+            LOGGER.debug(f"Contradiction detection JSON parse failed: {e}")
             # Fallback to simple contradiction detection if LLM fails
             return await self._simple_contradiction_check(new_rel, existing_rels)
 
