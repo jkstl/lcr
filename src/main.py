@@ -40,28 +40,53 @@ async def check_system_status() -> dict[str, dict]:
                 main_model_loaded = any(main_model_base in m for m in model_names)
                 embedding_model_loaded = any(embedding_model_base in m for m in model_names)
 
-                # Check observer model - handle transformers: prefix separately
-                if settings.observer_model.startswith("transformers:"):
-                    # Extract path after "transformers:" prefix
-                    model_path = settings.observer_model.split(":", 1)[1]
-                    # Check if model directory exists and has required files
+                def transformers_model_loaded(model: str) -> bool:
+                    model_path = model.split(":", 1)[1]
                     model_dir = Path(model_path)
-                    observer_model_loaded = (
-                        model_dir.exists() and
-                        model_dir.is_dir() and
-                        (model_dir / "config.json").exists() and
-                        (model_dir / "model.safetensors").exists()
-                    )
-                else:
-                    observer_model_base = settings.observer_model.split(':')[0]
-                    observer_model_loaded = any(observer_model_base in m for m in model_names)
+                    if not (model_dir.exists() and model_dir.is_dir()):
+                        return False
+                    if not (model_dir / "config.json").exists():
+                        return False
+                    model_files = list(model_dir.glob("*.safetensors")) + list(model_dir.glob("*.bin"))
+                    return len(model_files) > 0
+
+                def ollama_model_loaded(model: str) -> bool:
+                    model_base = model.split(":")[0]
+                    return any(model_base in m for m in model_names)
+
+                def observer_model_loaded(model: str) -> bool:
+                    if model.startswith("transformers:"):
+                        return transformers_model_loaded(model)
+                    if model.startswith("nuextract:"):
+                        model_path = model.split(":", 1)[1]
+                        if Path(model_path).exists():
+                            return transformers_model_loaded(f"transformers:{model_path}")
+                        return True
+                    return ollama_model_loaded(model)
+
+                observer_utility_loaded = observer_model_loaded(settings.observer_utility_model)
+                observer_extraction_loaded = observer_model_loaded(settings.observer_extraction_model)
 
                 status["ollama"] = {
                     "status": "ok",
                     "main_model": settings.main_model if main_model_loaded else f"{settings.main_model} (not found)",
-                    "observer_model": settings.observer_model if observer_model_loaded else f"{settings.observer_model} (not found)",
+                    "observer_utility_model": (
+                        settings.observer_utility_model
+                        if observer_utility_loaded
+                        else f"{settings.observer_utility_model} (not found)"
+                    ),
+                    "observer_extraction_model": (
+                        settings.observer_extraction_model
+                        if observer_extraction_loaded
+                        else f"{settings.observer_extraction_model} (not found)"
+                    ),
                     "embedding_model": settings.embedding_model if embedding_model_loaded else f"{settings.embedding_model} (not found)",
-                    "all_loaded": main_model_loaded and observer_model_loaded and embedding_model_loaded
+                    "all_loaded": (
+                        main_model_loaded
+                        and observer_utility_loaded
+                        and observer_extraction_loaded
+                        and embedding_model_loaded
+                    )
                 }
             else:
                 status["ollama"] = {"status": "error", "message": f"HTTP {response.status_code}"}
@@ -168,7 +193,8 @@ def display_system_status(status: dict[str, dict]) -> bool:
                 "Ollama",
                 "[green]✓ OK[/green]",
                 f"Main: {ollama_status['main_model']}\n"
-                f"Observer: {ollama_status['observer_model']}\n"
+                f"Observer (utility): {ollama_status['observer_utility_model']}\n"
+                f"Observer (extraction): {ollama_status['observer_extraction_model']}\n"
                 f"Embeddings: {ollama_status['embedding_model']}"
             )
         else:
@@ -176,7 +202,8 @@ def display_system_status(status: dict[str, dict]) -> bool:
                 "Ollama",
                 "[yellow]⚠ WARN[/yellow]",
                 f"Main: {ollama_status['main_model']}\n"
-                f"Observer: {ollama_status['observer_model']}\n"
+                f"Observer (utility): {ollama_status['observer_utility_model']}\n"
+                f"Observer (extraction): {ollama_status['observer_extraction_model']}\n"
                 f"Embeddings: {ollama_status['embedding_model']}\n"
                 "[yellow]Some models not found[/yellow]"
             )

@@ -362,7 +362,7 @@ Observer already uses lightweight `qwen3:1.7b` on CPU. To speed up further:
 ollama pull qwen3:0.6b
 
 # Edit .env:
-OBSERVER_MODEL=qwen3:0.6b
+OBSERVER_UTILITY_MODEL=qwen3:0.6b
 ```
 
 ### Reduce Memory Storage
@@ -380,7 +380,8 @@ Key settings in `src/config.py` (overridable via `.env`):
 ```python
 # Models
 MAIN_MODEL=qwen3:14b          # Main conversation LLM
-OBSERVER_MODEL=qwen3:1.7b     # Observer for extraction
+OBSERVER_UTILITY_MODEL=qwen3:1.7b     # Observer for utility grading
+OBSERVER_EXTRACTION_MODEL=nuextract:numind/NuExtract-2.0-2B  # Observer for extraction
 EMBEDDING_MODEL=nomic-embed-text:v1.5
 
 # Memory retrieval
