@@ -53,26 +53,26 @@ A local, privacy-first conversational AI system with persistent episodic memory 
 ┌─────────────────────────────────────────────────────────────────────┐
 │                     CONTEXT ASSEMBLY                                │
 │                                                                     │
-│  1. Embed Query (nomic-embed-text)                                 │
-│  2. Parallel Search (optimized):                                   │
-│     • Vector Search → Top 15 semantic matches (LanceDB)            │
-│     • Graph Search → Top 10 entities/relationships (FalkorDB)      │
-│  3. Apply Temporal Decay (tiered by utility)                       │
-│  4. Cross-Encoder Rerank → Top 5 most relevant                     │
+│  1. Embed Query (nomic-embed-text)                                  │
+│  2. Parallel Search (optimized):                                    │
+│     • Vector Search → Top 15 semantic matches (LanceDB)             │
+│     • Graph Search → Top 10 entities/relationships (FalkorDB)       │
+│  3. Apply Temporal Decay (tiered by utility)                        │
+│  4. Cross-Encoder Rerank → Top 5 most relevant                      │
 │                                                                     │
-│  ┌──────────────┐              ┌──────────────┐                    │
-│  │  LanceDB     │◄──parallel──►│  FalkorDB    │                    │
-│  │  (Vectors)   │    queries    │  (Graph)     │                    │
-│  └──────────────┘              └──────────────┘                    │
+│  ┌──────────────┐              ┌──────────────┐                     │
+│  │  LanceDB     │◄──parallel──►│  FalkorDB    │                     │
+│  │  (Vectors)   │    queries   │  (Graph)     │                     │
+│  └──────────────┘              └──────────────┘                     │
 └────────────────────────────┬────────────────────────────────────────┘
                              │
                              ▼
 ┌─────────────────────────────────────────────────────────────────────┐
 │                     LLM GENERATION                                  │
 │                                                                     │
-│  Input: Recent conversation + Top 5 retrieved memories             │
-│  Model: Qwen3 14B (via Ollama)                                     │
-│  Output: Contextually-aware response                               │
+│  Input: Recent conversation + Top 5 retrieved memories              │
+│  Model: Qwen3 14B (via Ollama)                                      │
+│  Output: Contextually-aware response                                │
 └────────────────────────────┬────────────────────────────────────────┘
                              │
                              ▼
@@ -84,17 +84,17 @@ A local, privacy-first conversational AI system with persistent episodic memory 
 ┌─────────────────────────────────────────────────────────────────────┐
 │                OBSERVER (Async) - Dual-Model                        │
 │                                                                     │
-│  1. Grade Utility (qwen3:1.7b) → DISCARD/STORE/IMPORTANT (100%)   │
-│  2. IF DISCARD → Early Exit (skip steps 3-6)                       │
-│  3. ELSE Parallel Processing:                                      │
-│     • Extract Entities (NuExtract-2.0-2B, ~90%, zero hallucination)│
-│     • Extract Relationships (template-based, purely extractive)    │
-│     • Classify Fact Type → core / preference / episodic            │
-│     • Generate Summary + Retrieval Queries                         │
-│  4. Detect Contradictions → Mark old facts as superseded           │
-│  5. Persist to LanceDB (vector) + FalkorDB (graph)                 │
+│  1. Grade Utility (qwen3:1.7b) → DISCARD/STORE/IMPORTANT (100%)     │
+│  2. IF DISCARD → Early Exit (skip steps 3-6)                        │
+│  3. ELSE Parallel Processing:                                       │
+│     • Extract Entities (NuExtract-2.0-2B, ~90%, zero hallucination) │
+│     • Extract Relationships (template-based, purely extractive)     │
+│     • Classify Fact Type → core / preference / episodic             │
+│     • Generate Summary + Retrieval Queries                          │
+│  4. Detect Contradictions → Mark old facts as superseded            │
+│  5. Persist to LanceDB (vector) + FalkorDB (graph)                  │
 │                                                                     │
-│  Models: qwen3:1.7b (utility) + NuExtract-2.0-2B (extraction)     │
+│  Models: qwen3:1.7b (utility) + NuExtract-2.0-2B (extraction)       │
 └─────────────────────────────────────────────────────────────────────┘
                              │
                              ▼
@@ -412,7 +412,6 @@ lcr-codex_CLAUDEREVIEW/
 ├── scripts/
 │   ├── inspect_memory.py          # View stored data
 │   ├── clear_memory.py            # Memory management menu
-│   ├── observer_giana_live.py     # Test observer extraction
 │   └── observer_stress_test.py    # Observer performance test
 │
 ├── data/
